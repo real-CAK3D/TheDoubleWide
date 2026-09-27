@@ -441,6 +441,30 @@ def market_copy(today, day):
     return None
 
 
+def directory_changes(today):
+    """Births and passings: listings that appeared in / disappeared from The Green Thumb since the last snapshot."""
+    gt = os.path.join(H, "garden", "green-thumb")
+    try:
+        ents = json.load(open(os.path.join(gt, "site", "data", "green-thumb.json"))).get("entries") or []
+    except Exception:
+        ents = []
+    try:
+        ents += json.load(open(os.path.join(gt, "private", "entries.json"))).get("entries") or []
+    except Exception:
+        pass
+    snap = {x["id"]: {"name": x.get("name"), "device": x.get("device"), "category": x.get("category")} for x in ents if x.get("id")}
+    d = os.path.join(SITE, "data")
+    prev = sorted(f for f in os.listdir(d) if f.startswith("directory-") and f < "directory-%s.json" % today)
+    json.dump(snap, open(os.path.join(d, "directory-%s.json" % today), "w"))
+    if not prev:
+        out = {"born": [], "passed": [], "first_snapshot": True}
+    else:
+        old = json.load(open(os.path.join(d, prev[-1])))
+        out = {"born": [dict(snap[k], id=k) for k in snap if k not in old], "passed": [dict(old[k], id=k) for k in old if k not in snap], "since": prev[-1][10:20]}
+    json.dump(out, open(os.path.join(d, "obits-%s.json" % today), "w"))
+    return out
+
+
 def main():
     now = dt.datetime.now(TZ)
     today = now.date().isoformat()
@@ -490,6 +514,13 @@ def main():
                 print("B.I.G CATALOG: " + (f"{len(r.get('items') or [])} items filed — they print in ROACH CLIPS (B.I.G's paper), not in The Double Wide; you may mention the best one in a story" if r else "none filed yet (the page shows the coming-soon teaser)"))
         except Exception as e:
             print(f"{label}: unavailable ({type(e).__name__}: {e})")
+    try:
+        ob = directory_changes(today)
+        print("\nDIRECTORY CHANGES (Obituaries & Announcements print automatically): born: %s; passed: %s"
+              % (", ".join("%s (%s)" % (x["name"], x.get("device")) for x in ob["born"]) or "none",
+                 ", ".join("%s (%s)" % (x["name"], x.get("device")) for x in ob["passed"]) or "none"))
+    except Exception as ex:
+        print("DIRECTORY CHANGES: unavailable (%s)" % type(ex).__name__)
     facts = coming_up_facts()
     print("\nCOMING UP FACTS (use these + the recap for the 'coming_up' calendar):\n" + ("\n".join("- " + f for f in facts) or "- none found"))
 
