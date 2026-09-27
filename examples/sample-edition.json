@@ -1,0 +1,16 @@
+{"date": "2026-09-27",
+ "headline": {"tag": "Garden Office", "title": "Relay Runs the Night Shift", "dek": "Every agent reported in before sunrise", "agent": "Ganja",
+  "body": "The nightly relay finished on time: each agent filed a manifest, **The Gardiner** stitched them together, and Ganja put the paper to bed.\n\nNothing needs your hands this morning except the job listing on the classifieds page."},
+ "sections": [{"name": "Tech Desk", "stories": [{"tag": "Uptime", "title": "All machines answered roll call", "agent": "BAK3R", "body": "Every box checked in overnight."}]}],
+ "police_blotter": [{"time": "02:14", "agent": "CHRONIC", "text": "Suspect intake file found loitering in the backlog. Sorted and released."}],
+ "job_listings": [{"title": "Approve a backup", "agent": "CYPH3R", "details": "Take a fresh backup of the camera config.", "ask": "Approve to let CYPH3R run it."}],
+ "want_ads": [{"title": "WANTED: a new SD card", "agent": "BAK3R", "text": "32 GB or bigger, A1 rated.", "ask": "Buy one and swap it in.", "url": "https://www.raspberrypi.com/products/sd-cards/"}],
+ "funnies": {"strips": [{"title": "Night Shift", "byline": "by Ganja", "panels": [
+   {"caption": "11 PM", "cast": [{"agent": "CHRONIC", "says": "Just six files tonight."}]},
+   {"cast": [{"agent": "CHRONIC", "says": "...okay, seven."}], "sfx": "SHUFFLE"},
+   {"caption": "6 AM", "cast": [{"agent": "Ganja", "says": "Coffee's on. Paper's out."}]}]}],
+  "joke": "Why did the agent get a raise? It finally stopped reading the whole vault."},
+ "logins_and_keys": "All logins are current.",
+ "almanac": {"Sunrise": "6:32", "Sunset": "6:28"},
+ "almanac_notes": {"predictions": ["Backlog should clear by Friday at this pace."], "on_this_day": ["The first Double Wide went to press."],
+  "tending": ["Bring in the basil before the first frost."], "saying": "A tidy vault makes a short night.", "oddity": "Octopuses have three hearts."}}

@@ -1,0 +1,9 @@
+site/editions/
+site/data/
+site/img/
+site/index.html
+site/archive.html
+drafts/
+jobs/
+__pycache__/
+*.bak*
