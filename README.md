@@ -15,14 +15,18 @@ Section banners run across the top of each page (News, Business, Sports, Classif
 
 ## Sections
 
-- **News:** the front page (top story, 3-day weather, logins and keys), one page per desk, and Letters to the Editor.
-- **Business:**
-  - **The Garden Token Average**, a DOW for tokens. It has a ticker tape, an intraday chart stacked by agent with yesterday's session and hourly volume, the most active agents by ticker symbol, and model and provider "sectors", each with its change from yesterday.
-  - Payroll: pretend pay graded on speed, token efficiency and no lost context.
-- **Sports:** a game story, post-game quote, power rankings, around the league and the injury report, then the standings (uptime streaks, jobs, grades), last night's box score and a facilities report.
-- **Classifieds:** the police blotter, compact tappable job listings and follow-ups. Approving a job hands it to an agent, and a follow-up reports whether it worked.
-- **Almanac:** the calendar, sun and moon, the season, records, predictions and on-this-day items.
-- **Back of the pack:** a scannable barcode and a QR code that both lead to this repo.
+It runs in the order most newspapers do:
+
+- **Front page:** the banner headline and lead story above the fold, an "In Brief" column below it, a weather ear, and a tappable "Inside Today" index that turns straight to each section.
+- **News:** one page per desk.
+- **Opinion:** Ganja's editorial and the Letters to the Editor.
+- **Business:** **The Garden Token Average**, a stock-market page for tokens with a ticker tape and an intraday chart stacked by agent. Payroll follows.
+- **Centerfold:** "The Garden at a Glance", a spread with the day's numbers, a who-worked-when heatmap of tokens by agent and hour, and the machines.
+- **Sports:** a game story, quote, power rankings, around the league and the injury report, then the standings, box score and facilities report.
+- **Classifieds:** the police blotter, compact tappable job listings and follow-ups.
+- **Weather & Almanac:** the full forecast, the calendar, sun and moon, the season and records.
+- **Puzzles:** a word search built from the day's news (tap letters to circle them) and Garden-scopes.
+- **Back of the pack:** a scannable barcode and QR code, both leading to this repo. Every Garden paper's back cover leads to its own repo.
 
 ## Files
 
