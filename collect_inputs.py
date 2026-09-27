@@ -188,6 +188,7 @@ def usage(day, today):
     d0 = dt.datetime.combine(dt.date.fromisoformat(day), dt.time(), TZ)
     s0, s1 = d0.timestamp(), (d0 + dt.timedelta(days=1)).timestamp()
     hours = [0.0] * 24
+    agent_hours = collections.defaultdict(lambda: [0.0] * 24)   # who burned tokens when (for the market chart)
     agent, model, prov = collections.Counter(), collections.Counter(), collections.Counter()
     cache = 0.0
     calls = 0
@@ -210,9 +211,11 @@ def usage(day, today):
                 tok = (tin + tout) * frac
                 if tok <= 0:
                     continue
-                for t in inday:
-                    hours[dt.datetime.fromtimestamp(t, TZ).hour] += tok / len(inday)
                 name = AGENT_NAMES.get(prof, prof)
+                for t in inday:
+                    h = dt.datetime.fromtimestamp(t, TZ).hour
+                    hours[h] += tok / len(inday)
+                    agent_hours[name][h] += tok / len(inday)
                 bp_label = "Ollama (NukeBox)" if "ollama" in str(bp or "").lower() else (bp or "unknown")
                 agent[name] += tok; model[mdl or "unknown"] += tok; prov[bp_label] += tok
                 cache += tcache * frac; calls += round(ncalls * frac)
@@ -227,8 +230,11 @@ def usage(day, today):
     except Exception:
         pc = None
     if pc:
+        pc_tot = sum((pc.get("by_agent") or {}).values()) or 1
         for i, v in enumerate(pc.get("hours") or []):
             hours[i] += v
+            for k, kv in (pc.get("by_agent") or {}).items():   # PC hours split across the PC's tools by their share
+                agent_hours[k][i] += v * kv / pc_tot
         for src, dst in (("by_agent", agent), ("by_model", model), ("by_provider", prov)):
             for k, v in (pc.get(src) or {}).items():
                 dst[k] += v
@@ -236,6 +242,7 @@ def usage(day, today):
     data = {"day": day, "total": round(sum(agent.values())), "cache_read": round(cache), "calls": calls,
             "hours": [round(h) for h in hours], "by_agent": dict(agent.most_common()), "by_model": dict(model.most_common()),
             "by_provider": dict(prov.most_common()), "pc_included": bool(pc),
+            "agent_hours": {k: [round(x) for x in v] for k, v in agent_hours.items() if sum(v) > 0},
             "note": "Tokens = input + output. Hermes logs usage per session, so hourly figures are spread by message times (estimate)."}
     os.makedirs(os.path.join(SITE, "data"), exist_ok=True)
     json.dump(data, open(os.path.join(SITE, "data", f"usage-{today}.json"), "w"))
@@ -480,7 +487,7 @@ def main():
                 print("PAYROLL (prints automatically): " + "; ".join(f"{x['agent']} ${x['today']:.2f} ({x['grade']})" for x in r["rows"])
                       + (f". Employee of the day: {r['employee_of_the_day']['agent']}" if r.get("employee_of_the_day") else ""))
             elif label == "MARKET":
-                print("B.I.G CATALOG: " + (f"{len(r.get('items') or [])} items filed — printed automatically; mention the best one in a story" if r else "none filed yet (the page shows the coming-soon teaser)"))
+                print("B.I.G CATALOG: " + (f"{len(r.get('items') or [])} items filed — they print in ROACH CLIPS (B.I.G's paper), not in The Double Wide; you may mention the best one in a story" if r else "none filed yet (the page shows the coming-soon teaser)"))
         except Exception as e:
             print(f"{label}: unavailable ({type(e).__name__}: {e})")
     facts = coming_up_facts()

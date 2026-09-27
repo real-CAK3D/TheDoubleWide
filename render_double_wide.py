@@ -140,24 +140,6 @@ def _streak(h):
     return ("%dd %dh" % (d, hh)) if d else ("%dh" % hh)
 
 
-def scoreboard_block(date):
-    try:
-        u = json.load(open(os.path.join(SITE, "data", "uptime-%s.json" % date)))
-    except Exception:
-        return '<div class="box scoreboard"><h2>Uptime Scoreboard</h2><p class="small">No scoreboard today.</p></div>'
-    def row(x, is_machine=False):
-        st = str(x.get("status", ""))
-        cls = "up" if st in ("up", "shift ok") else ("warn" if st.startswith("shift") and "error" not in st else "down")
-        who = ('<span class="mug sm mono">%s</span>' % ("🖥" if is_machine else e(x["name"][:1]))) if is_machine else mug(x["name"], "mug sm")
-        return ('<li class="sb-row"><span class="light %s"></span>%s<span class="sb-name">%s<small>%s</small></span><span class="sb-streak">%s</span></li>'
-                % (cls, who, e(x["name"]), e(x.get("kind") or st), e(_streak(x.get("streak_h")) or st)))
-    best = u.get("longest") or {}
-    top = ('<p class="sb-best">🏆 Longest streak: <b>%s</b> — %s</p>' % (e(best.get("name")), e(_streak(best.get("streak_h"))))) if best else ""
-    return ('<div class="box scoreboard"><h2>Uptime Scoreboard</h2>%s<div class="sb-cols"><div><h4>Agents</h4><ul>%s</ul></div>'
-            '<div><h4>Machines</h4><ul>%s</ul></div></div></div>'
-            % (top, "".join(row(x) for x in u.get("agents") or []), "".join(row(x, True) for x in u.get("machines") or [])))
-
-
 def coming_block(items):
     rows = "".join('<li><span class="cu-when">%s</span>%s<span>%s</span></li>' % (e(x.get("when")), mug(x.get("agent"), "mug xs"), e(x.get("what")))
                    for x in items or [] if isinstance(x, dict))
@@ -213,9 +195,9 @@ def tokens_block(date):
 
 
 # ---------------------------------------------------------------- newspaper sections
-def sec(letter, name, num, kicker=""):
-    return ('<div class="sec-banner"><span class="sec-letter">%s</span><span class="sec-name">%s</span>%s<span class="sec-pg">%s%d</span></div>'
-            % (letter, e(name), ('<span class="sec-kick">%s</span>' % e(kicker)) if kicker else "", letter, num))
+def sec(name, kicker=""):
+    return ('<div class="sec-banner"><span class="sec-name">%s</span>%s</div>'
+            % (e(name), ('<span class="sec-kick">%s</span>' % e(kicker)) if kicker else ""))
 
 
 # ---------------------------------------------------------------- Section B: the Garden Token Average (a DOW for tokens)
@@ -236,6 +218,97 @@ def _chg(now, before):
     return "%s%.1f%%" % ("▲" if pct > 0 else "▼" if pct < 0 else "", abs(pct)), cls, ("%+.0fk" % ((now - before) / 1000))
 
 
+AGENT_COLORS = ["#1f3a5f", "#b3261e", "#1f7a3a", "#c77d12", "#6a3d9a", "#0f7c8c", "#8c564b", "#d4508a"]
+
+
+def _axis_k(v):
+    return ("%.1fM" % (v / 1e6)) if v >= 1e6 else ("%dk" % round(v / 1e3)) if v >= 1e3 else "%d" % v
+
+
+def _nice_top(v):
+    if v <= 0:
+        return 1
+    mag = 10 ** (len(str(int(v))) - 1)
+    for m in (1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
+        if m * mag >= v:
+            return m * mag
+    return v
+
+
+def market_chart(u, pu):
+    """Intraday chart like a stock page: cumulative tokens stacked by the top agents, yesterday's session dashed for
+    comparison, hourly volume in a lower pane coloured by the hour's biggest burner with a 3-hour moving average,
+    and the day's peak marked."""
+    hrs = u.get("hours") or [0] * 24
+    ah = u.get("agent_hours") or {}
+    top = [k for k, _ in sorted(((k, sum(v)) for k, v in ah.items()), key=lambda kv: -kv[1])[:6]]
+    series = [(k, ah[k]) for k in top]
+    other = [max(0, hrs[i] - sum(v[i] for _, v in series)) for i in range(24)]
+    if sum(other) > 0:
+        series.append(("everyone else", other))
+    if not series:
+        series = [("all agents", hrs)]
+    color = {k: (AGENT_COLORS[i % len(AGENT_COLORS)] if k != "everyone else" else "#9a8f7e") for i, (k, _) in enumerate(series)}
+    cum = [sum(hrs[:i + 1]) for i in range(24)]
+    pcum = [sum((pu.get("hours") or [0] * 24)[:i + 1]) for i in range(24)] if pu else None
+    ymax = _nice_top(max(cum[-1], (pcum[-1] if pcum else 0)) * 1.05)
+    W, L, R, T, H1, GAP, H2 = 900, 58, 12, 16, 250, 34, 90
+    PAD = (W - L - R) / 48.0
+    X = lambda i: L + PAD + i * (W - L - R - 2 * PAD) / 23.0
+    Y = lambda v: T + H1 - v / ymax * H1
+    out = []
+    for g in range(5):   # price gridlines + labels
+        v = ymax * g / 4
+        out.append('<line class="grid" x1="%d" x2="%d" y1="%.1f" y2="%.1f"/><text class="yl" x="%d" y="%.1f">%s</text>' % (L, W - R, Y(v), Y(v), L - 6, Y(v) + 4, _axis_k(v)))
+    for i in range(0, 24, 3):
+        out.append('<line class="grid v" x1="%.1f" x2="%.1f" y1="%d" y2="%d"/>' % (X(i), X(i), T, T + H1 + GAP + H2))
+    base = [0.0] * 24   # stacked cumulative areas, biggest agent at the bottom
+    for k, v in series:
+        run, top_line = 0, []
+        for i in range(24):
+            run += v[i]
+            top_line.append(base[i] + run)
+        pts = " ".join("%.1f,%.1f" % (X(i), Y(top_line[i])) for i in range(24))
+        back = " ".join("%.1f,%.1f" % (X(i), Y(base[i])) for i in range(23, -1, -1))
+        out.append('<polygon class="stack" fill="%s" points="%s %s"><title>%s: %s</title></polygon>' % (color[k], pts, back, e(k), _axis_k(sum(v))))
+        base = top_line
+    if pcum:
+        out.append('<polyline class="prev" points="%s"/>' % " ".join("%.1f,%.1f" % (X(i), Y(pcum[i])) for i in range(24)))
+    out.append('<polyline class="close" points="%s"/>' % " ".join("%.1f,%.1f" % (X(i), Y(cum[i])) for i in range(24)))
+    peak = max(range(24), key=lambda h: hrs[h])
+    out.append('<circle class="pk" cx="%.1f" cy="%.1f" r="5"/><text class="note" x="%.1f" y="%.1f">Peak hour %s · %s</text>'
+               % (X(peak), Y(cum[peak]), min(X(peak) + 8, W - 160), max(Y(cum[peak]) - 8, T + 12), (str(peak % 12 or 12) + ("a" if peak < 12 else "p")), _axis_k(hrs[peak])))
+    out.append('<text class="note end" x="%d" y="%.1f">Close %s</text>' % (W - R - 2, Y(cum[-1]) - 8 if Y(cum[-1]) > T + 20 else Y(cum[-1]) + 16, _axis_k(cum[-1])))
+    vt = _nice_top(max(hrs) or 1)
+    y0 = T + H1 + GAP
+    for g in (0, 0.5, 1):
+        out.append('<text class="yl" x="%d" y="%.1f">%s</text>' % (L - 6, y0 + H2 - H2 * g + 4, _axis_k(vt * g)))
+    bw = (W - L - R - 2 * PAD) / 24.0
+    for i in range(24):
+        if hrs[i]:
+            who = max(series, key=lambda kv: kv[1][i])[0]
+            hgt = hrs[i] / vt * H2
+            out.append('<rect class="vbar" x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"><title>%s:00 — %s (mostly %s)</title></rect>'
+                       % (X(i) - bw * 0.38, y0 + H2 - hgt, bw * 0.76, hgt, color[who], i, _axis_k(hrs[i]), e(who)))
+    ma = [sum(hrs[max(0, i - 2):i + 1]) / len(hrs[max(0, i - 2):i + 1]) for i in range(24)]
+    out.append('<polyline class="ma" points="%s"/>' % " ".join("%.1f,%.1f" % (X(i), y0 + H2 - ma[i] / vt * H2) for i in range(24)))
+    out.append('<text class="pane" x="%d" y="%d">VOLUME · tokens per hour · line = 3-hr moving average</text>' % (L + 4, y0 - 6))
+    for i in range(0, 24, 3):
+        out.append('<text class="xl" x="%.1f" y="%d">%s</text>' % (X(i), y0 + H2 + 16, (str(i % 12 or 12) + ("a" if i < 12 else "p"))))
+    legend = "".join('<span><i style="background:%s"></i>%s</span>' % (color[k], e(k)) for k, _ in series)
+    legend += '<span><i class="lg-close"></i>Close (all agents)</span>' + ('<span><i class="lg-prev"></i>Yesterday</span>' if pcum else "")
+    return ('<svg class="mkt" viewBox="0 0 %d %d" role="img" aria-label="tokens through the day by agent">%s</svg><div class="mkt-legend">%s</div>'
+            % (W, y0 + H2 + 24, "".join(out), legend))
+
+
+def spark(v):
+    if not v or not sum(v):
+        return ""
+    m = max(v)
+    return '<svg class="spark" viewBox="0 0 48 14" preserveAspectRatio="none"><polyline points="%s"/></svg>' % " ".join(
+        "%.1f,%.1f" % (i * 2, 13 - x / m * 12) for i, x in enumerate(v))
+
+
 def tokens_dow(date):
     try:
         u = json.load(open(os.path.join(SITE, "data", "usage-%s.json" % date)))
@@ -249,49 +322,44 @@ def tokens_dow(date):
     total, ptotal = u.get("total") or 0, pu.get("total") or 0
     pct, cls, delta = _chg(total, ptotal)
     hrs = u.get("hours") or [0] * 24
-    cum, run = [], 0
-    for h in hrs:
-        run += h
-        cum.append(run)
-    W, H, top = 600, 170, max(cum[-1], 1)
-    vol_top = max(hrs) or 1
-    line = " ".join("%.1f,%.1f" % (i * W / 23, H - 12 - cum[i] / top * (H - 40)) for i in range(24))
-    bars = "".join('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f"/>' % (i * W / 24 + 2, H - hrs[i] / vol_top * 34, W / 24 - 4, hrs[i] / vol_top * 34)
-                   for i in range(24) if hrs[i])
-    ticks = "".join('<text x="%.1f" y="%d">%s</text>' % (i * W / 23, H + 14, (str(i % 12 or 12) + ("a" if i < 12 else "p"))) for i in range(0, 24, 3))
-    chart = ('<svg class="dow-chart" viewBox="0 -6 %d %d" preserveAspectRatio="none" role="img" aria-label="tokens through the day">'
-             '<g class="vol">%s</g><polygon class="area" points="0,%d %s %d,%d"/><polyline class="ln" points="%s"/><g class="tk">%s</g></svg>'
-             % (W, H + 22, bars, H - 12, line, W, H - 12, line, ticks))
+    live = [h for h in hrs if h]
+    first = next((i for i in range(24) if hrs[i]), 0)
+    peak = max(range(24), key=lambda h: hrs[h])
+    ah = u.get("agent_hours") or {}
 
     def movers(cur, old, is_agent):
         rows = []
         for k, v in sorted((cur or {}).items(), key=lambda kv: -kv[1])[:12]:
             pc, c, d = _chg(v, (old or {}).get(k, 0))
-            rows.append('<tr class="%s"><td class="sym">%s</td><td class="nm">%s%s</td><td class="num">%s</td><td class="num chg">%s</td><td class="num">%s</td></tr>'
-                        % (c, e(sym(k)) if is_agent else "", mug(k, "mug xs") if is_agent else "", e(k), _k(v), pc, d))
-        return "".join(rows) or '<tr><td colspan="5">—</td></tr>'
+            share = v / total * 100 if total else 0
+            rows.append('<tr class="%s"><td class="sym">%s</td><td class="nm">%s%s</td><td class="num">%s</td><td class="num chg">%s</td><td class="num">%.0f%%</td><td>%s</td></tr>'
+                        % (c, e(sym(k)) if is_agent else "", mug(k, "mug xs") if is_agent else "", e(k), _k(v), pc, share, spark(ah.get(k)) if is_agent else ""))
+        return "".join(rows) or '<tr><td colspan="6">—</td></tr>'
     tape = " ".join('<span class="%s">%s %s %s</span>' % (_chg(v, (pu.get("by_agent") or {}).get(k, 0))[1], e(sym(k)), _k(v),
                                                           _chg(v, (pu.get("by_agent") or {}).get(k, 0))[0])
                     for k, v in sorted((u.get("by_agent") or {}).items(), key=lambda kv: -kv[1]))
-    peak = max(range(24), key=lambda h: hrs[h])
+    lead = max((u.get("by_agent") or {"—": 0}).items(), key=lambda kv: kv[1])
     return ('<div class="dow"><div class="ticker"><div class="tape">%s &nbsp;·&nbsp; %s</div></div>'
-            '<div class="dow-head"><div><div class="dow-name">The Garden Token Average</div><div class="small">GTA · tokens burned across the Garden · %s</div></div>'
-            '<div class="dow-quote %s"><b>%s</b><span>%s</span><small>%s vs. yesterday</small></div></div>'
-            '<div class="dow-stats"><div><small>Volume (API calls)</small><b>~%s</b></div><div><small>Cached reads</small><b>%s</b></div>'
-            '<div><small>Busiest hour</small><b>%d:00</b></div><div><small>Yesterday\'s close</small><b>%s</b></div></div>'
-            '%s<p class="small dow-note">Line: running total through the day · bars: tokens each hour. ▲ red = burned more than yesterday, ▼ green = leaner.</p>'
-            '<div class="dow-tables"><div><h4>Most Active — by agent</h4><table class="quotes"><thead><tr><th>Sym</th><th>Agent</th><th>Tokens</th><th>Chg</th><th>Net</th></tr></thead><tbody>%s</tbody></table></div>'
-            '<div><h4>Sectors — by model</h4><table class="quotes"><thead><tr><th></th><th>Model</th><th>Tokens</th><th>Chg</th><th>Net</th></tr></thead><tbody>%s</tbody></table>'
-            '<h4>Exchanges — by provider</h4><table class="quotes"><thead><tr><th></th><th>Provider</th><th>Tokens</th><th>Chg</th><th>Net</th></tr></thead><tbody>%s</tbody></table></div></div>'
-            '<p class="small">%s%s</p></div>'
-            % (tape, tape, e(u.get("day") or prev_day), cls, _k(total), pct, delta, e(u.get("calls")), _k(u.get("cache_read")), peak, _k(ptotal) if ptotal else "—",
-               chart, movers(u.get("by_agent"), pu.get("by_agent"), True), movers(u.get("by_model"), pu.get("by_model"), False),
+            '<div class="dow-head"><div><div class="dow-name">The Garden Token Average</div><div class="small">GTA · tokens burned across the Garden · session of %s</div></div>'
+            '<div class="dow-quote %s"><b>%s</b><span>%s</span><small>%s vs. yesterday\'s close</small></div></div>'
+            '<div class="dow-stats"><div><small>Open</small><b>%s</b><em>first hour %d:00</em></div><div><small>High (peak hour)</small><b>%s</b><em>at %d:00</em></div>'
+            '<div><small>Low (quietest live hour)</small><b>%s</b><em>%d live hours</em></div><div><small>Close</small><b>%s</b><em>prev. %s</em></div>'
+            '<div><small>Volume (API calls)</small><b>~%s</b><em>cached reads %s</em></div><div><small>Market leader</small><b>%s</b><em>%s · %.0f%% of volume</em></div></div>'
+            '%s'
+            '<div class="dow-tables"><div><h4>Most Active — by agent</h4><table class="quotes"><thead><tr><th>Sym</th><th>Agent</th><th>Tokens</th><th>Chg</th><th>Share</th><th>Day</th></tr></thead><tbody>%s</tbody></table></div>'
+            '<div><h4>Sectors — by model</h4><table class="quotes"><thead><tr><th></th><th>Model</th><th>Tokens</th><th>Chg</th><th>Share</th><th></th></tr></thead><tbody>%s</tbody></table>'
+            '<h4>Exchanges — by provider</h4><table class="quotes"><thead><tr><th></th><th>Provider</th><th>Tokens</th><th>Chg</th><th>Share</th><th></th></tr></thead><tbody>%s</tbody></table></div></div>'
+            '<p class="small">▲ red = burned more than yesterday · ▼ green = leaner. %s%s</p></div>'
+            % (tape, tape, e(u.get("day") or prev_day), cls, _k(total), pct, delta,
+               _k(hrs[first]), first, _k(hrs[peak]), peak, _k(min(live) if live else 0), len(live), _k(total), _k(ptotal) if ptotal else "—",
+               e(u.get("calls")), _k(u.get("cache_read")), e(sym(lead[0])), e(lead[0]), (lead[1] / total * 100) if total else 0,
+               market_chart(u, pu), movers(u.get("by_agent"), pu.get("by_agent"), True), movers(u.get("by_model"), pu.get("by_model"), False),
                movers(u.get("by_provider"), pu.get("by_provider"), False),
                e(u.get("note")), "" if u.get("pc_included") else " PC usage (Claude Code / Codex) not included today."))
 
 
 # ---------------------------------------------------------------- Section C: the Sports Section
-def sports_block(date):
+def _sports_data(date):
     try:
         up = json.load(open(os.path.join(SITE, "data", "uptime-%s.json" % date)))
     except Exception:
@@ -300,6 +368,80 @@ def sports_block(date):
         pay = json.load(open(os.path.join(SITE, "data", "payroll-%s.json" % date)))
     except Exception:
         pay = {}
+    return up, pay
+
+
+def auto_sports(up, pay):
+    """The sports desk's fallback: a game story, league notes, injury report and power rankings written from the real numbers."""
+    rows = [r for r in pay.get("rows") or [] if r.get("jobs")]
+    agents = {a["name"]: a for a in up.get("agents") or []}
+    if not rows and not agents:
+        return {}
+    ranked = sorted(rows, key=lambda r: (-{"A": 4, "B": 3, "C": 2, "D": 1}.get(r.get("grade"), 0), -r.get("today", 0)))
+    eotd = (pay.get("employee_of_the_day") or {}).get("agent") or (ranked[0]["agent"] if ranked else "")
+    busts = [r for r in rows if r.get("grade") == "F"]
+    lean = min(rows, key=lambda r: float(str(r.get("per_job") or "999k").rstrip("k") or 999)) if rows else None
+    total_pay = sum(r.get("today", 0) for r in rows)
+    graded_a = [r["agent"] for r in rows if r.get("grade") == "A"]
+    paras = []
+    if eotd:
+        paras.append("**%s** was the story of the night shift, turning in the most efficient outing on the card%s. The Garden League went %d-for-%d "
+                     "on the night, with %d players grading out at an A and the whole roster pulling in $%.2f in pretend pay."
+                     % (eotd, (" at %s tokens a job" % lean["per_job"]) if lean and lean["agent"] == eotd else "", len(rows) - len(busts), len(rows),
+                        len(graded_a), total_pay))
+    if lean and lean["agent"] != eotd:
+        paras.append("Lean-burn honors went to %s, who needed just %s tokens per job — the kind of economy that keeps the front office happy." % (lean["agent"], lean["per_job"]))
+    if busts:
+        paras.append("It wasn't a clean sheet. %s came up empty with an F, and the dugout will be looking for answers before the next shift."
+                     % " and ".join(r["agent"] for r in busts))
+    best = up.get("longest") or {}
+    if best:
+        paras.append("Meanwhile %s keeps the longest active streak in the league alive at %s without a stumble." % (best.get("name"), _streak(best.get("streak_h"))))
+    inj = []
+    for a in agents.values():
+        st = str(a.get("status", ""))
+        if "error" in st or st == "down":
+            inj.append({"agent": a["name"], "status": "Out" if st == "down" else "Day-to-day", "note": "shift error last night" if "error" in st else "offline"})
+    for m in up.get("machines") or []:
+        if m.get("status") != "up":
+            inj.append({"agent": m["name"], "status": "Out", "note": "machine offline"})
+    atl = []
+    for r in sorted(rows, key=lambda r: -r.get("today", 0))[1:5]:
+        atl.append("%s: %s job%s, grade %s, $%.2f on the night." % (r["agent"], r["jobs"], "" if r["jobs"] == 1 else "s", r.get("grade"), r.get("today", 0)))
+    return {"recap": "\n\n".join(paras), "around_the_league": atl, "injury_report": inj[:6],
+            "power_rankings": [{"agent": r["agent"], "note": "grade %s · %s tokens/job" % (r.get("grade"), r.get("per_job"))} for r in ranked[:5]]}
+
+
+def sports_block(date, sp):
+    """Page one of Sports: the game story, the quote, around the league, the injury report and the power rankings
+    (written by Ganja's sports desk in the edition's "sports" object), with Player of the Game and Streak Watch."""
+    up, pay = _sports_data(date)
+    sp = dict(auto_sports(up, pay), **{k: v for k, v in (sp if isinstance(sp, dict) else {}).items() if v})
+    eotd, best = pay.get("employee_of_the_day") or {}, up.get("longest") or {}
+    head = sp.get("headline") or (("%s takes Player of the Game" % eotd["agent"]) if eotd.get("agent") else "Quiet night in the Garden League")
+    q = sp.get("quote") or {}
+    inj = "".join('<tr><td class="team">%s<span>%s</span></td><td class="st %s">%s</td><td>%s</td></tr>'
+                  % (mug(x.get("agent"), "mug xs"), e(x.get("agent")), e(str(x.get("status", "")).lower().split()[0] if x.get("status") else ""),
+                     e(x.get("status")), e(x.get("note"))) for x in sp.get("injury_report") or [] if isinstance(x, dict))
+    pr = "".join('<li>%s<div><b>%s</b> <span class="small">%s</span></div></li>' % (mug(x.get("agent"), "mug xs"), e(x.get("agent")), e(x.get("note")))
+                 for x in (sp.get("power_rankings") or [])[:5] if isinstance(x, dict))
+    atl = "".join("<li>%s</li>" % e(x) for x in sp.get("around_the_league") or [] if x)
+    return ('<div class="sports"><h2 class="sp-head">%s</h2>%s'
+            '<div class="sp-grid"><article class="sp-story">%s%s%s</article><aside class="sp-side">%s%s%s%s%s</aside></div></div>'
+            % (e(head), ('<p class="sp-deck">%s</p>' % e(sp["deck"])) if sp.get("deck") else "",
+               ('<div class="byline">%s<span>By %s · Sports Desk</span></div>' % (mug(sp.get("byline") or "Disco Stu"), e(sp.get("byline") or "Disco Stu"))),
+               para(sp.get("recap")) or "<p>No game story tonight — the press box was empty.</p>",
+               ('<blockquote class="sp-quote">“%s”<cite>— %s</cite></blockquote>' % (e(q.get("text")), e(q.get("agent")))) if q.get("text") else "",
+               ('<div class="sp-mvp">%s<div><span class="kicker">Player of the Game</span><b>%s</b><div>%s</div></div></div>' % (mug(eotd["agent"], "mug"), e(eotd["agent"]), e(eotd.get("why")))) if eotd.get("agent") else "",
+               ('<div class="sp-streak"><span class="kicker">Streak Watch</span><b>%s</b><div>%s straight without a stumble</div></div>' % (e(best.get("name")), e(_streak(best.get("streak_h"))))) if best else "",
+               ('<h4>Power Rankings</h4><ol class="sp-pr">%s</ol>' % pr) if pr else "",
+               ('<h4>Around the League</h4><ul class="sp-atl">%s</ul>' % atl) if atl else "",
+               ('<h4>Injury Report</h4><table class="agate inj"><tbody>%s</tbody></table>' % inj) if inj else ""))
+
+
+def scoreboard_block(date):
+    """Page two of Sports: standings, box score, facilities (agate type)."""
+    up, pay = _sports_data(date)
     prow = {r.get("agent"): r for r in pay.get("rows") or []}
     teams = []
     for a in up.get("agents") or []:
@@ -317,18 +459,11 @@ def sports_block(date):
     fac = "".join('<tr><td class="team">🖥 <span>%s</span></td><td><span class="light %s"></span></td><td class="num">%s</td><td>%s</td></tr>'
                   % (e(m["name"]), "up" if m.get("status") == "up" else "down", e(_streak(m.get("streak_h")) or m.get("status")), e(m.get("kind") or ""))
                   for m in up.get("machines") or [])
-    eotd, best = pay.get("employee_of_the_day") or {}, up.get("longest") or {}
-    head = ("%s takes Player of the Game" % eotd["agent"]) if eotd.get("agent") else ("Streak watch: %s" % best.get("name")) if best else "Quiet night in the Garden League"
-    return ('<div class="sports"><h2 class="sp-head">%s</h2>'
-            '<div class="sp-top">%s%s</div>'
-            '<div class="sp-cols"><div><h4>Garden League Standings</h4><table class="agate"><thead><tr><th>Team</th><th></th><th>Streak</th><th>Jobs</th><th>Grade</th><th>Pay wk</th></tr></thead>'
-            '<tbody>%s</tbody></table></div>'
+    return ('<div class="sports"><h2 class="sp-head small">Scoreboard</h2><div class="sp-cols"><div><h4>Garden League Standings</h4>'
+            '<table class="agate"><thead><tr><th>Team</th><th></th><th>Streak</th><th>Jobs</th><th>Grade</th><th>Pay wk</th></tr></thead><tbody>%s</tbody></table></div>'
             '<div><h4>Last Night\'s Box Score</h4><table class="agate"><thead><tr><th>Player</th><th>Jobs</th><th>Tok/job</th><th>Grade</th><th>Pay</th></tr></thead>'
             '<tbody>%s</tbody></table><h4>Facilities Report</h4><table class="agate"><thead><tr><th>Machine</th><th></th><th>Up</th><th></th></tr></thead><tbody>%s</tbody></table></div></div></div>'
-            % (e(head),
-               ('<div class="sp-mvp">%s<div><span class="kicker">Player of the Game</span><b>%s</b><div>%s</div></div></div>' % (mug(eotd["agent"], "mug"), e(eotd["agent"]), e(eotd.get("why")))) if eotd.get("agent") else "",
-               ('<div class="sp-streak"><span class="kicker">Streak Watch</span><b>%s</b><div>%s straight without a stumble</div></div>' % (e(best.get("name")), e(_streak(best.get("streak_h"))))) if best else "",
-               "".join(t[1] for t in teams) or '<tr><td colspan="6">No standings today.</td></tr>',
+            % ("".join(t[1] for t in teams) or '<tr><td colspan="6">No standings today.</td></tr>',
                box or '<tr><td colspan="5">No games last night.</td></tr>', fac or '<tr><td colspan="4">—</td></tr>'))
 
 
@@ -370,7 +505,7 @@ def followups_block(date):
                            e(v.get("result") or "Still working on it — the report posts in Ganja's channel when it's done.")))
     if not rows:
         return ""
-    return '<div class="box followups"><h2>Follow-ups</h2><p class="small">What happened to the jobs you approved</p><ul class="fu">%s</ul></div>' % "".join(rows[-8:])
+    return '<div class="followups"><h2>Follow-ups</h2><p class="small">What happened to the jobs you approved</p><ul class="fu">%s</ul></div>' % "".join(rows[-8:])
 
 
 # ---------------------------------------------------------------- B.I.G's catalog
@@ -524,40 +659,37 @@ def render(ed):
     blotter = "".join('<li>%s<span><b>%s</b> %s</span></li>' % (mug(b.get("agent"), "mug xs"), e(b.get("time")), e(b.get("text")))
                       for b in ed.get("police_blotter") or [] if isinstance(b, dict))
     almanac = "".join("<li><b>%s</b> %s</li>" % (e(k), e(v)) for k, v in (ed.get("almanac") or {}).items())
-    # a real paper: A News · B Business · C Sports · D Classifieds · E Almanac
-    pages = [page("A1 · Front Page", sec("A", "News", 1, "Today's top story") + '<div class="front"><div class="front-lead">%s</div><aside class="front-side">%s'
+    # a real paper: News · Business · Sports · Classifieds · Almanac
+    pages = [page("Front Page", sec("News", "Today's top story") + '<div class="front"><div class="front-lead">%s</div><aside class="front-side">%s'
                   '<div class="box keys"><h2>Logins &amp; Keys</h2>%s</div></aside></div>' % (story(head, lead=True), weather_block(date), keys))]
-    n = 2
     for s_ in ed.get("sections") or []:
         if isinstance(s_, dict) and s_.get("stories"):
-            pages.append(page("A%d · %s" % (n, s_.get("name")), sec("A", "News", n, s_.get("name")) + '<div class="desk"><h2 class="desk-name">%s</h2><div class="cols">%s</div></div>'
+            pages.append(page(s_.get("name"), sec("News", s_.get("name")) + '<div class="desk"><h2 class="desk-name">%s</h2><div class="cols">%s</div></div>'
                               % (e(s_.get("name")), "".join(story(x) for x in s_["stories"]))))
-            n += 1
     sug = [x for x in (ed.get("suggestions") or []) if isinstance(x, dict)]
     if sug:   # ideas for new sections/improvements; CAK3D decides what sticks
-        pages.append(page("A%d · Letters to the Editor" % n, sec("A", "Opinion", n, "Letters to the Editor") +
+        pages.append(page("Letters to the Editor", sec("Opinion", "Letters to the Editor") +
                           '<div class="box letters"><h2>Letters to the Editor</h2><p class="small">Ideas for the paper — tell Ganja which ones to keep</p>%s</div>'
                           % "".join('<div class="ad">%s<div><b>%s</b>%s<div>%s</div></div></div>'
                                     % (mug(x.get("agent"), "mug sm"), e(x.get("title")), (' <span class="tag">%s</span>' % e(x.get("agent"))) if x.get("agent") else "", e(x.get("text")))
                                     for x in sug)))
-    pages.append(page("B1 · The Garden Token Average", sec("B", "Business", 1, "Markets") + tokens_dow(date), " biz"))
-    pages.append(page("B2 · Payroll", sec("B", "Business", 2, "Payroll") + payroll_block(date), " biz"))
-    pages.append(page("B3 · Money & Market", sec("B", "Business", 3, "B.I.G's Wish-Book") + '<div class="box market">%s</div>' % catalog_block(market), " biz"))
-    pages.append(page("C1 · Sports", sec("C", "Sports", 1, "The Garden League") + sports_block(date), " sports-page"))
-    pages.append(page("D1 · Classifieds", sec("D", "Classifieds", 1) + '<div class="lower two"><div class="box blotter"><h2>Police Blotter</h2><ul>%s</ul></div>'
-                      '<div class="box jobs"><h2>Job Listings</h2><p class="small">Help wanted — tap one to approve it or handle it yourself</p>%s</div></div>%s'
-                      '<a class="reup-plug" href="/re-up/"><b>Want ads have moved!</b> Everything the agents need is in <i>The Re-Up</i> ›</a>'
+    pages.append(page("The Garden Token Average", sec("Business", "Markets") + tokens_dow(date), " biz"))
+    pages.append(page("Payroll", sec("Business", "Payroll") + payroll_block(date)
+                      + '<a class="reup-plug biz-plug" href="/roach-clips/">B.I.G\'s Wish-Book of side gigs now runs in <i>Roach Clips</i> ›</a>', " biz"))
+    pages.append(page("Sports", sec("Sports", "The Garden League") + sports_block(date, ed.get("sports")), " sports-page"))
+    pages.append(page("Sports: Scoreboard", sec("Sports", "Standings · Box score") + scoreboard_block(date), " sports-page"))
+    pages.append(page("Classifieds", sec("Classifieds") + '<div class="lower three"><div class="box blotter"><h2>Police Blotter</h2><ul>%s</ul></div>'
+                      '<div class="box jobs"><h2>Job Listings</h2><p class="small">Help wanted — tap one to approve it or handle it yourself</p>%s</div>'
+                      '<div class="box fu-box">%s<a class="reup-plug" href="/re-up/"><b>Want ads</b> are in <i>The Re-Up</i> ›</a></div></div>'
                       % (blotter or "<li>A quiet night. Nobody got arrested, not even the cron jobs.</li>",
-                         listing_block(ed.get("job_listings"), "job"), followups_block(date))))
-    if (fun.get("strips") or fun.get("panels")):   # older editions only; the funnies live in The Sunday Smoke now
-        pages.append(page("The Funnies", strips_block(fun), " comic-page"))
-    pages.append(page("E1 · Almanac & Calendar", sec("E", "Almanac", 1, "Calendar · Sky · Season") + coming_block(ed.get("coming_up"))
+                         listing_block(ed.get("job_listings"), "job"), followups_block(date) or '<h2>Follow-ups</h2><p class="small">Nothing approved lately.</p>')))
+    pages.append(page("Almanac & Calendar", sec("Almanac", "Calendar · Sky · Season") + coming_block(ed.get("coming_up"))
                       + almanac_block(date, ed.get("almanac_notes"), ed.get("almanac"))
-                      + '<p class="small center">That\'s the whole pack. <a href="../archive.html">Back issues →</a> · <a href="../catalog.html">B.I.G\'s catalog archive →</a></p>'))
+                      + '<p class="small center">That\'s the whole pack. <a href="../archive.html">Back issues →</a> · <a href="/">🏠 The Newsstand →</a></p>'))
     # hard covers = the outside of the rolling-paper pack
     front_cover = page("The Pack", (
         '<div class="gum"><span>GUMMED · DOUBLE WIDE · 1¼ · SLOW BURNING</span></div>'
-        '<div class="pc-top"><div class="seal">%s</div><div class="ear">No. %s<br>%s<br><b>%s</b><br>%s</div></div>'
+        '<div class="pc-top"><a class="seal" href="/" aria-label="Back to the Newsstand" title="Back to the Newsstand">%s</a><div class="ear">No. %s<br>%s<br><b>%s</b><br>%s</div></div>'
         '<div class="flag"><div class="est">EST. 2026 · THE GARDEN · LEWISTON, ME</div><h1>The Double<br>Wide</h1>'
         '<div class="motto">“All the news that\'s fit to roll”</div></div>'
         '<div class="pc-band"><span>1¼ SIZE</span><span>32 LEAVES</span><span>SLOW BURNING</span></div>'
@@ -566,7 +698,7 @@ def render(ed):
         % (SEAL, e(no), d.strftime("%a"), d.strftime("%b %-d"), d.strftime("%Y"), e(head.get("title"))), " hardcover")
     back_cover = page("Back of the Pack", (
         '<div class="gum"><span>MADE IN THE GARDEN · ROLLED BY GANJA</span></div>'
-        '<div class="pb-body"><div class="seal">%s</div><h2 class="pb-title">The Double Wide</h2>'
+        '<div class="pb-body"><a class="seal" href="/" aria-label="Back to the Newsstand" title="Back to the Newsstand">%s</a><h2 class="pb-title">The Double Wide</h2>'
         '<p>Printed at dawn on The Garden.<br>Compiled by The Gardiner · Rolled by Ganja.</p>'
         '<p class="pb-warn">CAUTION: contents may contain cron jobs, read-only filesystems and strong opinions.</p>'
         '<div class="codes"><a class="bc-wrap" href="%s" title="TheDoubleWide on GitHub">%s</a><div id="qr" class="qr" data-url="%s"></div></div>'
@@ -585,7 +717,7 @@ MARKET_KEYS = ("title", "tag", "price", "desc", "text", "how", "income_week", "t
 def book(pages, date, no, lists, paper="The Double Wide", motto="“All the news that's fit to roll”",
          gum="GUMMED · DOUBLE WIDE · 1¼ · SLOW BURNING · 32 LEAVES · MADE IN THE GARDEN", price="PRICE: ONE PINCH",
          delivered="DELIVERED BY GANJA", flap="Printed at dawn on The Garden · Compiled by The Gardiner · Rolled by Ganja",
-         body_class="pub-dw", est="EST. 2026 · THE GARDEN · LEWISTON, ME"):
+         body_class="pub-dw", est="EST. 2026 · THE GARDEN · LEWISTON, ME", toolbar="", scripts=""):
     """Wrap finished pages in the flipbook page (masthead, pager, tap-to-open cards, app hookups)."""
     d = dt.date.fromisoformat(date)
     css = open(os.path.join(ROOT, CSS_FILE)).read()
@@ -595,7 +727,7 @@ def book(pages, date, no, lists, paper="The Double Wide", motto="“All the news
                  ("@@DELIVERED@@", e(delivered)), ("@@FLAP@@", e(flap)), ("@@BODYCLASS@@", e(body_class)), ("@@EST@@", e(est)),
                  ("@@DATE_LONG@@", d.strftime("%A, %B %-d, %Y")), ("@@NO@@", e(no)), ("@@DOW@@", d.strftime("%a")),
                  ("@@MD@@", d.strftime("%b %-d")), ("@@YEAR@@", d.strftime("%Y")), ("@@SEAL@@", SEAL),
-                 ("@@PAGES@@", "\n".join(pages)), ("@@DATE@@", date), ("@@JOBS@@", list_json)):
+                 ("@@PAGES@@", "\n".join(pages)), ("@@DATE@@", date), ("@@JOBS@@", list_json), ("@@TOOLBAR@@", toolbar), ("@@SCRIPTS@@", scripts)):
         out = out.replace(k, v)
     return out
 
@@ -614,17 +746,17 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="icon" href="/icons/icon-192.png"><link rel="apple-touch-icon" href="/icons/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><script src="/app.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=UnifrakturMaguntia&family=Bangers&family=Patrick+Hand+SC&family=Oswald:wght@400;600;700&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Rye&family=UnifrakturMaguntia&family=Bangers&family=Patrick+Hand+SC&family=Oswald:wght@400;600;700&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>@@CSS@@</style></head><body class="@@BODYCLASS@@">
 <div class="pack">
   <div class="gum"><span>@@GUM@@</span></div>
   <header class="cover">
-    <div class="seal">@@SEAL@@</div>
+    <a class="seal" href="/" aria-label="Back to the Newsstand" title="Back to the Newsstand">@@SEAL@@</a>
     <div class="flag"><div class="est">@@EST@@</div><h1>@@PAPER@@</h1>
       <div class="motto">@@MOTTO@@</div></div>
     <div class="ear">No. @@NO@@<br>@@DOW@@<br><b>@@MD@@</b><br>@@YEAR@@</div>
   </header>
-  <div class="strip"><span>@@DATE_LONG@@</span><span>@@PRICE@@</span><span>@@DELIVERED@@</span></div>
+  <div class="strip"><span>@@DATE_LONG@@</span><span>@@PRICE@@</span><span>@@DELIVERED@@</span></div>@@TOOLBAR@@
   <div class="book-wrap" id="bookwrap"><div id="flipbook">
 @@PAGES@@
   </div></div>
@@ -773,7 +905,7 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
       msg.textContent = 'Sending…';
       if (btn.dataset.d === 'plan') {
         fetch(BASE + 'api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Double-Wide': '1' },
-          body: JSON.stringify({ date: DATE, idx: cur.idx }) })
+          body: JSON.stringify({ date: LIST.market_date || DATE, idx: cur.idx }) })
           .then(function (r) { return r.json(); })
           .then(function (res) { msg.textContent = res.message || 'Sent.'; if (res.status === 'ready' && res.url) location.href = BASE + res.url; load(); })
           .catch(function () { msg.textContent = 'Could not reach the Garden — try again in a minute.'; });
@@ -791,7 +923,7 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
   if (qrEl && window.qrcode) { var q = qrcode(0, 'M'); q.addData(qrEl.dataset.url); q.make(); qrEl.innerHTML = q.createSvgTag({ cellSize: 3, margin: 2, scalable: true }); }
   load();
 })();
-</script></body></html>"""
+</script>@@SCRIPTS@@</body></html>"""
 
 
 def main():

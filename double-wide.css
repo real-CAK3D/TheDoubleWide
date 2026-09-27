@@ -501,3 +501,60 @@ body.stand .paper { overflow-wrap: anywhere; }
 .agate tr:nth-child(odd) td { background: rgba(0,0,0,.035); }
 .agate .light { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); background: #999; vertical-align: middle; }
 .agate .light.up { background: #3fae4a; } .agate .light.warn { background: #e8b23a; } .agate .light.down { background: #d64040; }
+
+/* ==================================================================== v8: market chart, sports commentary, compact classifieds */
+a.seal { display: block; text-decoration: none; cursor: pointer; }
+a.seal:hover { filter: brightness(1.08); }
+.dow-stats { grid-template-columns: repeat(3, 1fr); }
+.dow-stats em { display: block; font: italic 12px/1.2 "Old Standard TT", serif; color: var(--muted); }
+@media (max-width: 700px) { .dow-stats { grid-template-columns: repeat(2, 1fr); } }
+.mkt { width: 100%; height: auto; display: block; background: rgba(255,255,255,.5); border: 1.5px solid var(--ink); margin-top: 10px; }
+.mkt .grid { stroke: rgba(0,0,0,.14); stroke-width: 1; } .mkt .grid.v { stroke-dasharray: 2 4; }
+.mkt .yl { font: 11px Oswald, sans-serif; fill: var(--muted); text-anchor: end; }
+.mkt .xl { font: 11px Oswald, sans-serif; fill: var(--muted); text-anchor: middle; }
+.mkt .stack { opacity: .78; stroke: rgba(255,255,255,.5); stroke-width: .8; }
+.mkt .close { fill: none; stroke: #111; stroke-width: 2.4; }
+.mkt .prev { fill: none; stroke: #111; stroke-width: 1.6; stroke-dasharray: 6 5; opacity: .55; }
+.mkt .ma { fill: none; stroke: #111; stroke-width: 1.8; }
+.mkt .pk { fill: #b3261e; stroke: #fff; stroke-width: 2; }
+.mkt .note { font: 600 12px Oswald, sans-serif; fill: #111; } .mkt .note.end { text-anchor: end; }
+.mkt .pane { font: 600 10px Oswald, sans-serif; letter-spacing: .1em; fill: var(--muted); }
+.mkt-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 2px; font: 600 12px/1.3 Oswald, sans-serif; }
+.mkt-legend i { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.4); }
+.mkt-legend .lg-close { background: #111; height: 3px; border: 0; vertical-align: 3px; width: 18px; }
+.mkt-legend .lg-prev { background: repeating-linear-gradient(90deg, #111 0 5px, transparent 5px 9px); height: 2px; border: 0; vertical-align: 3px; width: 18px; }
+.spark { width: 60px; height: 16px; display: block; } .spark polyline { fill: none; stroke: #1f3a5f; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.sec-banner { justify-content: flex-start; }
+.sec-name { border-bottom: 0; }
+
+/* sports: a real sports page */
+.sports .sp-head.small { font-size: clamp(22px, 4vw, 30px); }
+.sp-deck { font: italic 19px/1.35 "Old Standard TT", serif; margin: -4px 0 12px; }
+.sp-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .sp-grid { grid-template-columns: 1fr; } }
+.sp-story { column-count: 2; column-gap: 18px; column-rule: 1px solid rgba(0,0,0,.2); font-size: 16.5px; }
+.sp-story .byline { column-span: all; }
+@media (max-width: 700px) { .sp-story { column-count: 1; } }
+.sp-story p:first-of-type::first-letter { float: left; font: 400 54px/.85 "Abril Fatface", serif; margin: 4px 6px 0 0; }
+.sp-quote { column-span: all; margin: 12px 0; padding: 10px 14px; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink);
+  font: 400 24px/1.2 "Abril Fatface", serif; text-align: center; }
+.sp-quote cite { display: block; font: 600 12px/1.4 Oswald, sans-serif; letter-spacing: .12em; text-transform: uppercase; margin-top: 6px; }
+.sp-side .sp-mvp, .sp-side .sp-streak { margin-bottom: 10px; }
+.sp-pr { margin: 6px 0 0; padding-left: 22px; } .sp-pr li { margin: 5px 0; } .sp-pr li > div { display: inline-block; vertical-align: middle; margin-left: 4px; }
+.sp-pr li .mug { vertical-align: middle; }
+.sp-atl { margin: 6px 0 0; padding-left: 18px; font-size: 15px; } .sp-atl li { margin: 5px 0; }
+.inj td { font-size: 13px; vertical-align: top; } .inj .st { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+.inj .st.out { color: #b3261e; } .inj .st.questionable, .inj .st.day-to-day { color: #c77d12; } .inj .st.probable { color: #1f7a3a; }
+
+/* classifieds: compact job listings, three columns like before */
+.lower.three { grid-template-columns: 1fr 1.25fr 1fr; }
+@media (max-width: 860px) { .lower.three { grid-template-columns: 1fr; } }
+.jobs .ad.job { padding: 8px; gap: 8px; font-size: 14px; line-height: 1.35; }
+.jobs .ad.job b { font-size: 15px; }
+.jobs .ad.job .job-txt > div:not(.job-status):not(.ask) { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.jobs .ad.job .ask { font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.jobs .ad.job .mug.sm { width: 34px; height: 34px; }
+.fu-box .followups h2 { margin-top: 0; }
+.biz-plug { border-color: #b3261e; background: #fff1e6; }
+
+.mkt .note, .mkt .yl, .mkt .xl { paint-order: stroke; stroke: rgba(255,250,240,.95); stroke-width: 4px; stroke-linejoin: round; }
