@@ -281,6 +281,12 @@ def strips_block(fun):
     for s in strips[:4]:
         if not isinstance(s, dict):
             continue
+        if s.get("image"):   # drawn by draw_funnies.py: one inked strip, lettering included
+            said = " / ".join("%s: %s" % (c.get("agent"), c.get("says")) for p in (s.get("panels") or []) if isinstance(p, dict)
+                              for c in (p.get("cast") or []) if isinstance(c, dict) and c.get("says"))
+            out.append('<figure class="strip-art"><a href="%s" target="_blank" rel="noopener"><img src="%s" loading="lazy" alt="%s"></a></figure>'
+                       % (e(s["image"]), e(s["image"]), e("%s %s. %s" % (s.get("title") or "", s.get("byline") or "", said))))
+            continue
         panels = []
         for p in (s.get("panels") or [])[:4]:
             if not isinstance(p, dict):
