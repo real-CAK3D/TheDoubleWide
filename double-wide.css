@@ -628,3 +628,8 @@ a.seal:hover { filter: brightness(1.08); }
 .ws-words { columns: 2; margin: 6px 0 0; padding-left: 18px; font: 600 13px/1.6 Oswald, sans-serif; letter-spacing: .08em; }
 .scope { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dotted var(--rule); } .scope p { margin: 2px 0 0; font-size: 15px; font-style: italic; }
 .page-in.puzzles h2 { margin-top: 0; }
+
+/* The Double Wide's name in the same Rye lettering as its sister papers */
+body.pub-dw .flag h1, body.pub-dw .page-in.hardcover .flag h1 { font-family: Rye, "Abril Fatface", serif; font-weight: 400; letter-spacing: .01em; }
+body.pub-dw .pb-title { font-family: Rye, "Abril Fatface", serif; }
+body.pub-dw .cover .flag h1 { font-size: clamp(28px, 5.6vw, 64px); white-space: nowrap; }
