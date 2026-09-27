@@ -1,80 +1,93 @@
 #!/usr/bin/env python3
-"""The Double Wide web server (Tailscale-only).
+"""The Double Wide web server (Tailscale-only; mounted at /double-wide/ under the Newsstand's HTTPS address).
 
-Static files from site/ with no-cache headers, plus the Job Listings API:
-  GET  /api/jobs?date=YYYY-MM-DD      -> {"<idx>": {"status": ..., "at": ..., "agent": ...}}
-  POST /api/jobs {date, idx, decision} -> decision: approve | done | dismiss
-On "approve" the listing (read from the edition draft on disk, never from the browser) is handed to
-Ganja as a one-off Hermes job; his report is posted in his Discord channel.
+  GET  /api/jobs?date=YYYY-MM-DD       -> {"<key>": {"status": ..., "result": ...}}
+  POST /api/jobs {date, kind, idx, decision}   kind: job | want | market;  decision: approve | done | dismiss
+        "approve" hands the listing (read from disk, never from the browser) to Ganja as a one-off Hermes job.
+  GET  /api/plans                      -> {"<item_no>": {"status": writing|ready|failed, "url": ...}}
+  POST /api/plan {date, idx}           -> B.I.G writes a full start-to-finish plan for that catalog item
 Usage: serve.py <site_dir> <host> <port>
 """
-import datetime as dt, functools, glob, http.server, json, os, re, subprocess, sys, threading
+import datetime as dt, glob, json, os, re, subprocess, sys
+
+import gardenweb as gw
+from gardenweb import jload, jsave, LOCK
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-JOBS_DIR = os.path.join(ROOT, "jobs")
-DRAFTS = os.path.join(ROOT, "drafts")
+SITE = os.path.join(ROOT, "site")
 HERMES = os.path.expanduser("~/.hermes")
-LOCK = threading.Lock()
-HOST_ORIGIN, PORT = None, 8086
-
-
-def load_state(date):
-    try:
-        return json.load(open(os.path.join(JOBS_DIR, date + ".json")))
-    except Exception:
-        return {}
-
-
-def save_state(date, st):
-    os.makedirs(JOBS_DIR, exist_ok=True)
-    tmp = os.path.join(JOBS_DIR, date + ".json.tmp")
-    json.dump(st, open(tmp, "w"), indent=1)
-    os.replace(tmp, os.path.join(JOBS_DIR, date + ".json"))
-
-
+PY = os.path.join(HERMES, "hermes-agent/venv/bin/python")
+NEWSSTAND = os.path.join(HERMES, "garden", "newsstand")   # notices go out through the Newsstand app
 RESULT_RULE = ("START your final reply with exactly one line: 'RESULT: OK — <what worked>', 'RESULT: FAILED — <what went wrong>' or "
                "'RESULT: NEEDS CAK3D — <the step he must do>'. The paper shows that line as the follow-up, so keep it under 120 characters.")
 
 
-def hand_to_ganja(date, idx, job, kind="job"):
-    if kind == "market":
-        prompt = (
-            "CAK3D tapped 'Interested' on this idea in B.I.G's catalog (The Double Wide, edition %s):\n- Idea: %s\n- Details: %s\n- How it pays: %s\n"
-            "- Income/week: %s · Time: %s · Up-front: %s · Weekly cost: %s · Risk: %s\n\n"
-            "As B.I.G (resale / quick-cash scout; ask B.I.G via his notes in the Garden Wiki at 10_Constellations/B.I.G if needed), write a "
-            "short STARTER PLAN: first 3 concrete steps, accounts/services needed (say which CAK3D already has), a tiny first test, and what "
-            "would tell us to stop. Do NOT buy anything, create accounts, list items or spend money — those need CAK3D. Save the plan to the "
-            "vault at 10_Constellations/B.I.G/Plans/<idea>.md via ssh cak3d. " + RESULT_RULE
-        ) % (date, job.get("title"), job.get("desc") or job.get("text") or "", job.get("how") or "", job.get("income_week") or "?",
-             job.get("tend") or "?", job.get("upfront") or "?", job.get("weekly_cost") or "?", job.get("risk") or "?")
-    else:
-        prompt = (
-            "CAK3D just APPROVED this %s from The Double Wide (edition %s, #%d) by tapping it in the paper:\n"
-            "- Title: %s\n- Owner agent: %s\n- Details: %s\n- Request: %s\n\n"
-            "Carry it out now if the Garden agents can do it (use your ssh aliases and tools as your SOUL describes; inspect first, "
-            "back up before changes, keep a rollback path, never print or store secrets). If it genuinely needs CAK3D's own hands — buying "
-            "hardware, clicking in a web console, physical access, an interactive login — don't pretend: give short, exact steps. "
-            "Your final reply is posted to Discord: say what you did and how you verified it, or the steps CAK3D needs, in a few lines. "
-            + RESULT_RULE
-        ) % ("job listing" if kind == "job" else "want ad", date, idx + 1, job.get("title"), job.get("agent") or "unassigned",
-             job.get("details") or job.get("text") or "", job.get("ask") or "")
-    code = ("import sys, json; from cron.jobs import create_job\n"
-            "j = create_job(sys.argv[1], '1m', name=sys.argv[2], repeat=1, deliver='discord')\n"
-            "print(j.get('id') if isinstance(j, dict) else j)")
+def create_job(profile_home, prompt, name, schedule="1m", pause=False):
+    code = ("import sys; from cron.jobs import create_job, pause_job\n"
+            "j = create_job(sys.argv[1], sys.argv[3], name=sys.argv[2], repeat=1, deliver='discord')\n"
+            "jid = j.get('id') if isinstance(j, dict) else j\n"
+            "if sys.argv[4] == '1': pause_job(jid)\n"
+            "print(jid)")
+    r = subprocess.run([PY, "-c", code, prompt, name, schedule, "1" if pause else "0"], cwd=os.path.join(HERMES, "hermes-agent"),
+                       env={**os.environ, "HERMES_HOME": profile_home}, capture_output=True, text=True, timeout=180)
+    if r.returncode != 0:
+        return False, r.stderr.strip()[-200:]
+    return True, (r.stdout.strip().splitlines() or [""])[-1]
+
+
+def hand_to_ganja(date, idx, job, kind):
+    prompt = (
+        "CAK3D just APPROVED this %s from The Double Wide (edition %s, #%d) by tapping it in the paper:\n"
+        "- Title: %s\n- Owner agent: %s\n- Details: %s\n- Request: %s\n\n"
+        "Carry it out now if the Garden agents can do it (use your ssh aliases and tools as your SOUL describes; inspect first, "
+        "back up before changes, keep a rollback path, never print or store secrets). If it genuinely needs CAK3D's own hands — buying "
+        "hardware, clicking in a web console, physical access, an interactive login — don't pretend: give short, exact steps. "
+        "Your final reply is posted to Discord: say what you did and how you verified it, or the steps CAK3D needs, in a few lines. " + RESULT_RULE
+    ) % ("job listing" if kind == "job" else "want ad", date, idx + 1, job.get("title"), job.get("agent") or "unassigned",
+         job.get("details") or job.get("text") or "", job.get("ask") or "")
     try:
-        r = subprocess.run([os.path.join(HERMES, "hermes-agent/venv/bin/python"), "-c", code, prompt,
-                            "Double Wide approval: " + str(job.get("title"))[:60]],
-                           cwd=os.path.join(HERMES, "hermes-agent"), env={**os.environ, "HERMES_HOME": HERMES},
-                           capture_output=True, text=True, timeout=180)
-        return r.returncode == 0, (r.stdout.strip() or r.stderr.strip()[-200:])
+        return create_job(HERMES, prompt, "Double Wide approval: " + str(job.get("title"))[:60])
     except Exception as e:
         return False, str(e)
 
 
+def sh(s):
+    return "'" + str(s).replace("'", "'\\''") + "'"
+
+
+def start_plan(date, idx, item, item_no):
+    """B.I.G's gateway is only up for shifts, so his one-off plan job runs through relay-step (start, run, stop);
+    then the guide page is built and CAK3D gets a notice."""
+    facts = json.dumps({k: item.get(k) for k in ("item_no", "title", "tag", "price", "desc", "how", "income_week", "tend", "upfront",
+                                                  "weekly_cost", "risk", "links")}, ensure_ascii=False, indent=1)
+    prompt = open(os.path.join(ROOT, "prompts", "big_plan_prompt.txt")).read() \
+        .replace("@@ITEM@@", facts).replace("@@ITEM_NO@@", item_no).replace("@@DATE@@", date)
+    name = "B.I.G plan: %s" % item_no
+    ok, jid = create_job(os.path.join(HERMES, "profiles", "big"), prompt, name, schedule="0 0 1 1 *", pause=True)
+    if not ok:
+        return False, jid
+    cmd = ("%s/bin/relay-step.sh big %s; %s %s/build_extras.py; [ -f %s/guides/%s.html ] && %s %s/notify.py %s %s %s") % (
+        HERMES, sh(name), PY, ROOT, SITE, item_no, PY, NEWSSTAND, sh("📋 B.I.G's plan is ready"), sh(str(item.get("title") or item_no)[:80]),
+        sh("/double-wide/guides/%s.html" % item_no))
+    subprocess.Popen(["systemd-run", "--user", "--collect", "--unit=big-plan-%s-%s" % (item_no.lower(), dt.datetime.now().strftime("%H%M%S")),
+                      "/bin/bash", "-c", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True, jid
+
+
+def plans_state():
+    st = jload(os.path.join(ROOT, "plans", "state.json"), {})
+    for no, v in st.items():   # a guide page on disk means it's done
+        if os.path.exists(os.path.join(SITE, "guides", no + ".html")):
+            v["status"], v["url"] = "ready", "guides/%s.html" % no
+        elif v.get("status") == "writing" and v.get("at", "") < (dt.datetime.now() - dt.timedelta(hours=3)).isoformat():
+            v["status"] = "failed"
+    return st
+
+
 def followup(date):
-    """Fill in results for approved listings: read the one-off job's report (its first line is 'RESULT: …')."""
-    st = load_state(date)
-    changed = False
+    """Fill in results for approved listings from the one-off job's report (first line 'RESULT: …')."""
+    f = os.path.join(ROOT, "jobs", date + ".json")
+    st, changed = jload(f, {}), False
     for key, v in st.items():
         jid = v.get("hermes_job")
         if v.get("status") != "approved" or v.get("result_status") or not jid or not re.fullmatch(r"[0-9a-f]{6,32}", str(jid)):
@@ -89,81 +102,90 @@ def followup(date):
             v["result_status"] = {"OK": "ok", "FAILED": "failed", "NEEDS CAK3D": "needs"}[m.group(1)]
             v["result"] = m.group(2).strip()[:160]
         else:
-            failed = "script failed" in txt or "Status:** error" in txt
-            v["result_status"] = "failed" if failed else "ok"
+            v["result_status"] = "failed" if ("script failed" in txt or "Status:** error" in txt) else "ok"
             v["result"] = (resp.replace("## Response", "").strip().splitlines() or ["finished — see Discord"])[0][:160]
         v["finished_at"] = dt.datetime.fromtimestamp(os.path.getmtime(outs[-1])).isoformat(timespec="minutes")
         changed = True
     if changed:
         with LOCK:
-            save_state(date, st)
+            jsave(f, st)
     return st
 
 
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header("Cache-Control", "no-cache, must-revalidate")
-        super().end_headers()
+def items_for(kind, date):
+    if kind == "market":   # B.I.G's catalog, as copied into the site
+        return jload(os.path.join(SITE, "data", "market-%s.json" % date), {}).get("items") or []
+    return jload(os.path.join(ROOT, "drafts", date + ".json"), {}).get("job_listings" if kind == "job" else "want_ads") or []
 
-    def log_message(self, *a):
-        pass
 
-    def _json(self, code, obj):
-        body = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+class Handler(gw.Handler):
+    ROOT = ROOT
 
-    def do_GET(self):
-        if self.path.startswith("/api/jobs"):
+    def get_api(self, p):
+        if p == "/api/jobs":
             m = re.search(r"date=(\d{4}-\d{2}-\d{2})", self.path)
-            return self._json(200, followup(m.group(1)) if m else {})
-        return super().do_GET()
+            self.json(200, followup(m.group(1)) if m else {})
+            return True
+        if p == "/api/plans":
+            self.json(200, plans_state())
+            return True
 
-    def do_POST(self):
-        if not self.path.startswith("/api/jobs"):
-            return self._json(404, {"ok": False})
-        origin = self.headers.get("Origin")
-        ok_origin = not origin or origin == HOST_ORIGIN or re.fullmatch(r"http://terminal-vnic(\.[\w.-]+)?:%d" % PORT, origin)
-        if self.headers.get("X-Double-Wide") != "1" or not ok_origin:
-            return self._json(403, {"ok": False, "message": "Not from the paper."})
-        try:
-            req = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)) or b"{}")
-            date, idx, decision = str(req.get("date")), int(req.get("idx")), str(req.get("decision"))
-            kind = str(req.get("kind") or "job")
-            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) and decision in ("approve", "done", "dismiss") and kind in ("job", "want", "market")
-            if kind == "market":   # B.I.G's catalog, as copied into the site by the collector
-                items = json.load(open(os.path.join(os.path.abspath(sys.argv[1]), "data", "market-%s.json" % date))).get("items") or []
-            else:
-                items = json.load(open(os.path.join(DRAFTS, date + ".json"))).get("job_listings" if kind == "job" else "want_ads") or []
-            job = items[idx]
-        except Exception:
-            return self._json(400, {"ok": False, "message": "That listing couldn't be found."})
-        key = str(idx) if kind == "job" else "%s:%d" % (kind, idx)
-        with LOCK:
-            st = load_state(date)
-            prev = st.get(key, {})
-            if decision == "approve" and prev.get("status") == "approved":
-                return self._json(200, {"ok": True, "message": "Already approved — Ganja is on it."})
-            entry = {"status": {"approve": "approved", "done": "done", "dismiss": "dismissed"}[decision], "kind": kind,
-                     "at": dt.datetime.now().isoformat(timespec="seconds"), "title": job.get("title"), "agent": "Ganja"}
-            if decision == "approve":
-                ok, info = hand_to_ganja(date, idx, job, kind)
+    def post_api(self, p):
+        if p == "/api/plan":
+            req = self.body()
+            date, idx = str(req.get("date")), int(req.get("idx"))
+            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)
+            item = items_for("market", date)[idx]
+            no = re.sub(r"[^A-Za-z0-9-]", "", str(item.get("item_no") or "%s-%d" % (date, idx + 1)))
+            with LOCK:
+                st = plans_state()
+                if st.get(no, {}).get("status") in ("writing", "ready"):
+                    s = st[no]["status"]
+                    self.json(200, {"ok": True, "status": s, "url": st[no].get("url"),
+                                    "message": "B.I.G is already writing this one." if s == "writing" else "The plan is ready."})
+                    return True
+                ok, info = start_plan(date, idx, item, no)
                 if not ok:
-                    return self._json(500, {"ok": False, "message": "Couldn't hand it to Ganja: " + info})
-                entry["hermes_job"] = info
-            st[key] = entry
-            save_state(date, st)
-        msg = {"approve": "Approved! Ganja picks it up within a minute; the result shows here and in Discord.",
-               "done": "Marked done — nice work.", "dismiss": "Okay, parked for now."}[decision]
-        if kind == "market" and decision == "approve":
-            msg = "Noted! B.I.G drafts a starter plan (no spending) — it shows up here and in Discord."
-        return self._json(200, {"ok": True, "message": msg})
+                    self.json(500, {"ok": False, "message": "Couldn't reach B.I.G: " + info})
+                    return True
+                st[no] = {"status": "writing", "title": item.get("title"), "date": date, "idx": idx, "job": info,
+                          "at": dt.datetime.now().isoformat(timespec="seconds")}
+                jsave(os.path.join(ROOT, "plans", "state.json"), st)
+            self.json(200, {"ok": True, "status": "writing",
+                            "message": "B.I.G is on it — he researches and writes the full plan (about 15–30 min). You'll get a notice when it's ready."})
+            return True
+        if p == "/api/jobs":
+            req = self.body()
+            try:
+                date, idx, decision = str(req.get("date")), int(req.get("idx")), str(req.get("decision"))
+                kind = str(req.get("kind") or "job")
+                assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) and decision in ("approve", "done", "dismiss")
+                assert kind in ("job", "want", "market") and not (kind == "market" and decision == "approve")
+                job = items_for(kind, date)[idx]
+            except Exception:
+                self.json(400, {"ok": False, "message": "That listing couldn't be found."})
+                return True
+            key = str(idx) if kind == "job" else "%s:%d" % (kind, idx)
+            f = os.path.join(ROOT, "jobs", date + ".json")
+            with LOCK:
+                st = jload(f, {})
+                if decision == "approve" and st.get(key, {}).get("status") == "approved":
+                    self.json(200, {"ok": True, "message": "Already approved — Ganja is on it."})
+                    return True
+                entry = {"status": {"approve": "approved", "done": "done", "dismiss": "dismissed"}[decision], "kind": kind,
+                         "at": dt.datetime.now().isoformat(timespec="seconds"), "title": job.get("title"), "agent": "Ganja"}
+                if decision == "approve":
+                    ok, info = hand_to_ganja(date, idx, job, kind)
+                    if not ok:
+                        self.json(500, {"ok": False, "message": "Couldn't hand it to Ganja: " + info})
+                        return True
+                    entry["hermes_job"] = info
+                st[key] = entry
+                jsave(f, st)
+            self.json(200, {"ok": True, "message": {"approve": "Approved! Ganja picks it up within a minute; the result shows here and in Discord.",
+                                                    "done": "Marked done — nice work.", "dismiss": "Okay, parked for now."}[decision]})
+            return True
 
 
 if __name__ == "__main__":
-    site, host, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
-    HOST_ORIGIN, PORT = "http://%s:%d" % (host, port), port
-    http.server.ThreadingHTTPServer((host, port), functools.partial(Handler, directory=site)).serve_forever()
+    gw.run(Handler, sys.argv[1], sys.argv[2], int(sys.argv[3]))

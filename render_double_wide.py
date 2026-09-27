@@ -12,6 +12,7 @@ import datetime as dt, glob, html, json, os, re, sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(ROOT, "site")
+CSS_FILE = "double-wide.css"   # sister papers that reuse this flipbook point this at their own stylesheet
 AGENTS = {
     "Ganja": "ganja", "The Gardiner": "gardener", "Gardiner": "gardener", "CHRONIC": "chronic", "Chronic": "chronic",
     "Maple": "maple", "Herbie": "herbie", "Homie": "homie", "Ibby": "ibby", "Disco Stu": "discostu", "BAK3R": "bak3r",
@@ -210,6 +211,127 @@ def tokens_block(date):
 
 
 
+
+# ---------------------------------------------------------------- newspaper sections
+def sec(letter, name, num, kicker=""):
+    return ('<div class="sec-banner"><span class="sec-letter">%s</span><span class="sec-name">%s</span>%s<span class="sec-pg">%s%d</span></div>'
+            % (letter, e(name), ('<span class="sec-kick">%s</span>' % e(kicker)) if kicker else "", letter, num))
+
+
+# ---------------------------------------------------------------- Section B: the Garden Token Average (a DOW for tokens)
+SYMBOLS = {"Ganja": "GNJA", "The Gardiner": "GRDN", "CHRONIC": "CHRN", "Maple": "MAPL", "Herbie": "HRBE", "Homie": "HOMY", "Ibby": "IBBY",
+           "Disco Stu": "STU", "BAK3R": "BAKR", "CYPH3R": "CYPH", "Clydius": "CLYD", "tinyZ": "TNYZ", "Fat Man": "FATM", "Little Boy": "LTLB",
+           "B.I.G": "BIG"}
+
+
+def sym(name):
+    return SYMBOLS.get(name) or (re.sub(r"[^A-Za-z]", "", str(name)).upper()[:4] or "?")
+
+
+def _chg(now, before):
+    if not before:
+        return "new", "flat", "—"
+    pct = (now - before) / before * 100
+    cls = "up" if pct > 0.5 else "down" if pct < -0.5 else "flat"
+    return "%s%.1f%%" % ("▲" if pct > 0 else "▼" if pct < 0 else "", abs(pct)), cls, ("%+.0fk" % ((now - before) / 1000))
+
+
+def tokens_dow(date):
+    try:
+        u = json.load(open(os.path.join(SITE, "data", "usage-%s.json" % date)))
+    except Exception:
+        return '<div class="box dow"><h2>The Garden Token Average</h2><p class="small">The market was closed — no usage figures today.</p></div>'
+    prev_day = (dt.date.fromisoformat(date) - dt.timedelta(days=1)).isoformat()
+    try:
+        pu = json.load(open(os.path.join(SITE, "data", "usage-%s.json" % prev_day)))
+    except Exception:
+        pu = {}
+    total, ptotal = u.get("total") or 0, pu.get("total") or 0
+    pct, cls, delta = _chg(total, ptotal)
+    hrs = u.get("hours") or [0] * 24
+    cum, run = [], 0
+    for h in hrs:
+        run += h
+        cum.append(run)
+    W, H, top = 600, 170, max(cum[-1], 1)
+    vol_top = max(hrs) or 1
+    line = " ".join("%.1f,%.1f" % (i * W / 23, H - 12 - cum[i] / top * (H - 40)) for i in range(24))
+    bars = "".join('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f"/>' % (i * W / 24 + 2, H - hrs[i] / vol_top * 34, W / 24 - 4, hrs[i] / vol_top * 34)
+                   for i in range(24) if hrs[i])
+    ticks = "".join('<text x="%.1f" y="%d">%s</text>' % (i * W / 23, H + 14, (str(i % 12 or 12) + ("a" if i < 12 else "p"))) for i in range(0, 24, 3))
+    chart = ('<svg class="dow-chart" viewBox="0 -6 %d %d" preserveAspectRatio="none" role="img" aria-label="tokens through the day">'
+             '<g class="vol">%s</g><polygon class="area" points="0,%d %s %d,%d"/><polyline class="ln" points="%s"/><g class="tk">%s</g></svg>'
+             % (W, H + 22, bars, H - 12, line, W, H - 12, line, ticks))
+
+    def movers(cur, old, is_agent):
+        rows = []
+        for k, v in sorted((cur or {}).items(), key=lambda kv: -kv[1])[:12]:
+            pc, c, d = _chg(v, (old or {}).get(k, 0))
+            rows.append('<tr class="%s"><td class="sym">%s</td><td class="nm">%s%s</td><td class="num">%s</td><td class="num chg">%s</td><td class="num">%s</td></tr>'
+                        % (c, e(sym(k)) if is_agent else "", mug(k, "mug xs") if is_agent else "", e(k), _k(v), pc, d))
+        return "".join(rows) or '<tr><td colspan="5">—</td></tr>'
+    tape = " ".join('<span class="%s">%s %s %s</span>' % (_chg(v, (pu.get("by_agent") or {}).get(k, 0))[1], e(sym(k)), _k(v),
+                                                          _chg(v, (pu.get("by_agent") or {}).get(k, 0))[0])
+                    for k, v in sorted((u.get("by_agent") or {}).items(), key=lambda kv: -kv[1]))
+    peak = max(range(24), key=lambda h: hrs[h])
+    return ('<div class="dow"><div class="ticker"><div class="tape">%s &nbsp;·&nbsp; %s</div></div>'
+            '<div class="dow-head"><div><div class="dow-name">The Garden Token Average</div><div class="small">GTA · tokens burned across the Garden · %s</div></div>'
+            '<div class="dow-quote %s"><b>%s</b><span>%s</span><small>%s vs. yesterday</small></div></div>'
+            '<div class="dow-stats"><div><small>Volume (API calls)</small><b>~%s</b></div><div><small>Cached reads</small><b>%s</b></div>'
+            '<div><small>Busiest hour</small><b>%d:00</b></div><div><small>Yesterday\'s close</small><b>%s</b></div></div>'
+            '%s<p class="small dow-note">Line: running total through the day · bars: tokens each hour. ▲ red = burned more than yesterday, ▼ green = leaner.</p>'
+            '<div class="dow-tables"><div><h4>Most Active — by agent</h4><table class="quotes"><thead><tr><th>Sym</th><th>Agent</th><th>Tokens</th><th>Chg</th><th>Net</th></tr></thead><tbody>%s</tbody></table></div>'
+            '<div><h4>Sectors — by model</h4><table class="quotes"><thead><tr><th></th><th>Model</th><th>Tokens</th><th>Chg</th><th>Net</th></tr></thead><tbody>%s</tbody></table>'
+            '<h4>Exchanges — by provider</h4><table class="quotes"><thead><tr><th></th><th>Provider</th><th>Tokens</th><th>Chg</th><th>Net</th></tr></thead><tbody>%s</tbody></table></div></div>'
+            '<p class="small">%s%s</p></div>'
+            % (tape, tape, e(u.get("day") or prev_day), cls, _k(total), pct, delta, e(u.get("calls")), _k(u.get("cache_read")), peak, _k(ptotal) if ptotal else "—",
+               chart, movers(u.get("by_agent"), pu.get("by_agent"), True), movers(u.get("by_model"), pu.get("by_model"), False),
+               movers(u.get("by_provider"), pu.get("by_provider"), False),
+               e(u.get("note")), "" if u.get("pc_included") else " PC usage (Claude Code / Codex) not included today."))
+
+
+# ---------------------------------------------------------------- Section C: the Sports Section
+def sports_block(date):
+    try:
+        up = json.load(open(os.path.join(SITE, "data", "uptime-%s.json" % date)))
+    except Exception:
+        up = {}
+    try:
+        pay = json.load(open(os.path.join(SITE, "data", "payroll-%s.json" % date)))
+    except Exception:
+        pay = {}
+    prow = {r.get("agent"): r for r in pay.get("rows") or []}
+    teams = []
+    for a in up.get("agents") or []:
+        st = str(a.get("status", ""))
+        light = "up" if st in ("up", "shift ok") else ("warn" if st.startswith("shift") and "error" not in st else "down")
+        r = prow.get(a["name"], {})
+        teams.append((a.get("streak_h") or 0, '<tr><td class="team">%s<span>%s</span></td><td><span class="light %s"></span></td><td class="num">%s</td>'
+                      '<td class="num">%s</td><td class="num">%s</td><td class="num">%s</td></tr>'
+                      % (mug(a["name"], "mug xs"), e(a["name"]), light, e(_streak(a.get("streak_h")) or st), e(r.get("jobs", "—")),
+                         e(r.get("grade", "—")), ("$%.2f" % r["week"]) if "week" in r else "—")))
+    teams.sort(key=lambda t: -t[0])
+    box = "".join('<tr><td class="team">%s<span>%s</span></td><td class="num">%s</td><td class="num">%s</td><td class="num">%s</td><td class="num">$%.2f</td></tr>'
+                  % (mug(r["agent"], "mug xs"), e(r["agent"]), e(r.get("jobs")), e(r.get("per_job")), e(r.get("grade")), r.get("today", 0))
+                  for r in pay.get("rows") or [] if r.get("jobs"))
+    fac = "".join('<tr><td class="team">🖥 <span>%s</span></td><td><span class="light %s"></span></td><td class="num">%s</td><td>%s</td></tr>'
+                  % (e(m["name"]), "up" if m.get("status") == "up" else "down", e(_streak(m.get("streak_h")) or m.get("status")), e(m.get("kind") or ""))
+                  for m in up.get("machines") or [])
+    eotd, best = pay.get("employee_of_the_day") or {}, up.get("longest") or {}
+    head = ("%s takes Player of the Game" % eotd["agent"]) if eotd.get("agent") else ("Streak watch: %s" % best.get("name")) if best else "Quiet night in the Garden League"
+    return ('<div class="sports"><h2 class="sp-head">%s</h2>'
+            '<div class="sp-top">%s%s</div>'
+            '<div class="sp-cols"><div><h4>Garden League Standings</h4><table class="agate"><thead><tr><th>Team</th><th></th><th>Streak</th><th>Jobs</th><th>Grade</th><th>Pay wk</th></tr></thead>'
+            '<tbody>%s</tbody></table></div>'
+            '<div><h4>Last Night\'s Box Score</h4><table class="agate"><thead><tr><th>Player</th><th>Jobs</th><th>Tok/job</th><th>Grade</th><th>Pay</th></tr></thead>'
+            '<tbody>%s</tbody></table><h4>Facilities Report</h4><table class="agate"><thead><tr><th>Machine</th><th></th><th>Up</th><th></th></tr></thead><tbody>%s</tbody></table></div></div></div>'
+            % (e(head),
+               ('<div class="sp-mvp">%s<div><span class="kicker">Player of the Game</span><b>%s</b><div>%s</div></div></div>' % (mug(eotd["agent"], "mug"), e(eotd["agent"]), e(eotd.get("why")))) if eotd.get("agent") else "",
+               ('<div class="sp-streak"><span class="kicker">Streak Watch</span><b>%s</b><div>%s straight without a stumble</div></div>' % (e(best.get("name")), e(_streak(best.get("streak_h"))))) if best else "",
+               "".join(t[1] for t in teams) or '<tr><td colspan="6">No standings today.</td></tr>',
+               box or '<tr><td colspan="5">No games last night.</td></tr>', fac or '<tr><td colspan="4">—</td></tr>'))
+
+
 # ---------------------------------------------------------------- listings (jobs + want ads), clickable
 def listing_block(items, kind):
     """Job Listings (kind='job') and Want Ads (kind='want') are both tappable: approve / handle / not now (+ link)."""
@@ -402,31 +524,36 @@ def render(ed):
     blotter = "".join('<li>%s<span><b>%s</b> %s</span></li>' % (mug(b.get("agent"), "mug xs"), e(b.get("time")), e(b.get("text")))
                       for b in ed.get("police_blotter") or [] if isinstance(b, dict))
     almanac = "".join("<li><b>%s</b> %s</li>" % (e(k), e(v)) for k, v in (ed.get("almanac") or {}).items())
-    # inside pages keep the classic newspaper layout (front grid with weather sidebar, 3-column desks, 3-column classifieds)
-    pages = [page("Front Page", '<div class="front"><div class="front-lead">%s</div><aside class="front-side">%s'
+    # a real paper: A News · B Business · C Sports · D Classifieds · E Almanac
+    pages = [page("A1 · Front Page", sec("A", "News", 1, "Today's top story") + '<div class="front"><div class="front-lead">%s</div><aside class="front-side">%s'
                   '<div class="box keys"><h2>Logins &amp; Keys</h2>%s</div></aside></div>' % (story(head, lead=True), weather_block(date), keys))]
-    for s in ed.get("sections") or []:
-        if isinstance(s, dict) and s.get("stories"):
-            pages.append(page(s.get("name"), '<div class="desk"><h2 class="desk-name">%s</h2><div class="cols">%s</div></div>'
-                              % (e(s.get("name")), "".join(story(x) for x in s["stories"]))))
-    pages.append(page("Garden Scoreboard", '<div class="board">%s%s</div>' % (scoreboard_block(date), coming_block(ed.get("coming_up")))))
-    pages.append(page("Token Tracker", tokens_block(date)))
-    pages.append(page("Payroll", payroll_block(date)))
-    pages.append(page("Classifieds", '<div class="lower"><div class="box blotter"><h2>Police Blotter</h2><ul>%s</ul></div>'
-                      '<div class="box jobs"><h2>Job Listings</h2><p class="small">Help wanted — tap one to approve it or handle it yourself</p>%s</div>'
-                      '<div class="box wants"><h2>Want Ads</h2><p class="small">Tap an ad to answer it</p>%s</div></div>%s'
-                      % (blotter or "<li>A quiet night. Nobody got arrested, not even the cron jobs.</li>",
-                         listing_block(ed.get("job_listings"), "job"), listing_block(ed.get("want_ads"), "want"), followups_block(date))))
-    pages.append(page("The Funnies", strips_block(fun), " comic-page"))
-    pages.append(page("Money & Market", '<div class="box market">%s</div>' % catalog_block(market)))
+    n = 2
+    for s_ in ed.get("sections") or []:
+        if isinstance(s_, dict) and s_.get("stories"):
+            pages.append(page("A%d · %s" % (n, s_.get("name")), sec("A", "News", n, s_.get("name")) + '<div class="desk"><h2 class="desk-name">%s</h2><div class="cols">%s</div></div>'
+                              % (e(s_.get("name")), "".join(story(x) for x in s_["stories"]))))
+            n += 1
     sug = [x for x in (ed.get("suggestions") or []) if isinstance(x, dict)]
-    if sug:  # ideas for new sections/improvements; CAK3D decides what sticks
-        pages.append(page("Suggestion Box", '<div class="box letters"><h2>Suggestion Box</h2><p class="small">Ideas for the paper — tell Ganja which ones to keep</p>%s</div>'
+    if sug:   # ideas for new sections/improvements; CAK3D decides what sticks
+        pages.append(page("A%d · Letters to the Editor" % n, sec("A", "Opinion", n, "Letters to the Editor") +
+                          '<div class="box letters"><h2>Letters to the Editor</h2><p class="small">Ideas for the paper — tell Ganja which ones to keep</p>%s</div>'
                           % "".join('<div class="ad">%s<div><b>%s</b>%s<div>%s</div></div></div>'
                                     % (mug(x.get("agent"), "mug sm"), e(x.get("title")), (' <span class="tag">%s</span>' % e(x.get("agent"))) if x.get("agent") else "", e(x.get("text")))
                                     for x in sug)))
-    pages.append(page("The Almanac", almanac_block(date, ed.get("almanac_notes"), ed.get("almanac"))
-                      + '<p class="small center">That\'s the whole pack. <a href="../archive.html">Back issues →</a></p>'))
+    pages.append(page("B1 · The Garden Token Average", sec("B", "Business", 1, "Markets") + tokens_dow(date), " biz"))
+    pages.append(page("B2 · Payroll", sec("B", "Business", 2, "Payroll") + payroll_block(date), " biz"))
+    pages.append(page("B3 · Money & Market", sec("B", "Business", 3, "B.I.G's Wish-Book") + '<div class="box market">%s</div>' % catalog_block(market), " biz"))
+    pages.append(page("C1 · Sports", sec("C", "Sports", 1, "The Garden League") + sports_block(date), " sports-page"))
+    pages.append(page("D1 · Classifieds", sec("D", "Classifieds", 1) + '<div class="lower two"><div class="box blotter"><h2>Police Blotter</h2><ul>%s</ul></div>'
+                      '<div class="box jobs"><h2>Job Listings</h2><p class="small">Help wanted — tap one to approve it or handle it yourself</p>%s</div></div>%s'
+                      '<a class="reup-plug" href="/re-up/"><b>Want ads have moved!</b> Everything the agents need is in <i>The Re-Up</i> ›</a>'
+                      % (blotter or "<li>A quiet night. Nobody got arrested, not even the cron jobs.</li>",
+                         listing_block(ed.get("job_listings"), "job"), followups_block(date))))
+    if (fun.get("strips") or fun.get("panels")):   # older editions only; the funnies live in The Sunday Smoke now
+        pages.append(page("The Funnies", strips_block(fun), " comic-page"))
+    pages.append(page("E1 · Almanac & Calendar", sec("E", "Almanac", 1, "Calendar · Sky · Season") + coming_block(ed.get("coming_up"))
+                      + almanac_block(date, ed.get("almanac_notes"), ed.get("almanac"))
+                      + '<p class="small center">That\'s the whole pack. <a href="../archive.html">Back issues →</a> · <a href="../catalog.html">B.I.G\'s catalog archive →</a></p>'))
     # hard covers = the outside of the rolling-paper pack
     front_cover = page("The Pack", (
         '<div class="gum"><span>GUMMED · DOUBLE WIDE · 1¼ · SLOW BURNING</span></div>'
@@ -447,15 +574,30 @@ def render(ed):
         '<p><a href="../archive.html">Back issues ›</a></p></div>') % (SEAL, REPO, code128_svg(REPO), REPO, date, e(no)), " hardcover back")
     pages = [front_cover] + pages + [back_cover]
     pick = lambda xs, keys: [{k: x.get(k) for k in keys} for x in (xs or []) if isinstance(x, dict)]
-    jobs_json = json.dumps({"job": pick(ed.get("job_listings"), ("title", "agent", "details", "text", "ask", "url")),
-                            "want": pick(ed.get("want_ads"), ("title", "agent", "details", "text", "ask", "url")),
-                            "market": pick(market, ("title", "tag", "price", "desc", "text", "how", "income_week", "tend", "upfront",
-                                                    "weekly_cost", "risk", "links", "item_no"))})
-    css = open(os.path.join(ROOT, "double-wide.css")).read()
-    return (TEMPLATE.replace("@@CSS@@", css).replace("@@DATE_LONG@@", "%s" % d.strftime("%A, %B %-d, %Y"))
-            .replace("@@NO@@", e(no)).replace("@@DOW@@", d.strftime("%a")).replace("@@MD@@", d.strftime("%b %-d"))
-            .replace("@@YEAR@@", d.strftime("%Y")).replace("@@SEAL@@", SEAL).replace("@@PAGES@@", "\n".join(pages))
-            .replace("@@DATE@@", date).replace("@@JOBS@@", jobs_json.replace("</", "<\\/")))
+    lists = {"job": pick(ed.get("job_listings"), ("title", "agent", "details", "text", "ask", "url")),
+             "market": pick(market, MARKET_KEYS)}
+    return book(pages, date=date, no=no, lists=lists)
+
+
+MARKET_KEYS = ("title", "tag", "price", "desc", "text", "how", "income_week", "tend", "upfront", "weekly_cost", "risk", "links", "item_no")
+
+
+def book(pages, date, no, lists, paper="The Double Wide", motto="“All the news that's fit to roll”",
+         gum="GUMMED · DOUBLE WIDE · 1¼ · SLOW BURNING · 32 LEAVES · MADE IN THE GARDEN", price="PRICE: ONE PINCH",
+         delivered="DELIVERED BY GANJA", flap="Printed at dawn on The Garden · Compiled by The Gardiner · Rolled by Ganja",
+         body_class="pub-dw", est="EST. 2026 · THE GARDEN · LEWISTON, ME"):
+    """Wrap finished pages in the flipbook page (masthead, pager, tap-to-open cards, app hookups)."""
+    d = dt.date.fromisoformat(date)
+    css = open(os.path.join(ROOT, CSS_FILE)).read()
+    list_json = json.dumps(lists, ensure_ascii=False).replace("</", "<\\/")
+    out = TEMPLATE
+    for k, v in (("@@CSS@@", css), ("@@PAPER@@", e(paper)), ("@@MOTTO@@", e(motto)), ("@@GUM@@", e(gum)), ("@@PRICE@@", e(price)),
+                 ("@@DELIVERED@@", e(delivered)), ("@@FLAP@@", e(flap)), ("@@BODYCLASS@@", e(body_class)), ("@@EST@@", e(est)),
+                 ("@@DATE_LONG@@", d.strftime("%A, %B %-d, %Y")), ("@@NO@@", e(no)), ("@@DOW@@", d.strftime("%a")),
+                 ("@@MD@@", d.strftime("%b %-d")), ("@@YEAR@@", d.strftime("%Y")), ("@@SEAL@@", SEAL),
+                 ("@@PAGES@@", "\n".join(pages)), ("@@DATE@@", date), ("@@JOBS@@", list_json)):
+        out = out.replace(k, v)
+    return out
 
 
 REPO = "https://github.com/real-CAK3D/TheDoubleWide"
@@ -467,19 +609,22 @@ SEAL = ('<svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r
 
 TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Double Wide — @@DATE_LONG@@</title>
+<title>@@PAPER@@ — @@DATE_LONG@@</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#2a1a10">
+<link rel="icon" href="/icons/icon-192.png"><link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><script src="/app.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Bangers&family=Patrick+Hand+SC&family=Oswald:wght@400;600;700&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-<style>@@CSS@@</style></head><body>
+<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=UnifrakturMaguntia&family=Bangers&family=Patrick+Hand+SC&family=Oswald:wght@400;600;700&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>@@CSS@@</style></head><body class="@@BODYCLASS@@">
 <div class="pack">
-  <div class="gum"><span>GUMMED · DOUBLE WIDE · 1¼ · SLOW BURNING · 32 LEAVES · MADE IN THE GARDEN</span></div>
+  <div class="gum"><span>@@GUM@@</span></div>
   <header class="cover">
     <div class="seal">@@SEAL@@</div>
-    <div class="flag"><div class="est">EST. 2026 · THE GARDEN · LEWISTON, ME</div><h1>The Double Wide</h1>
-      <div class="motto">“All the news that's fit to roll”</div></div>
+    <div class="flag"><div class="est">@@EST@@</div><h1>@@PAPER@@</h1>
+      <div class="motto">@@MOTTO@@</div></div>
     <div class="ear">No. @@NO@@<br>@@DOW@@<br><b>@@MD@@</b><br>@@YEAR@@</div>
   </header>
-  <div class="strip"><span>@@DATE_LONG@@</span><span>PRICE: ONE PINCH</span><span>DELIVERED BY GANJA</span></div>
+  <div class="strip"><span>@@DATE_LONG@@</span><span>@@PRICE@@</span><span>@@DELIVERED@@</span></div>
   <div class="book-wrap" id="bookwrap"><div id="flipbook">
 @@PAGES@@
   </div></div>
@@ -488,14 +633,14 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div class="where"><span id="leafname">The Pack</span><span class="dots" id="dots"></span><span class="swipe-hint">⟵ swipe, or grab the page edge to turn ⟶</span></div>
     <button type="button" id="next" aria-label="Next page">›</button>
   </nav>
-  <footer class="flap"><span>Printed at dawn on The Garden · Compiled by The Gardiner · Rolled by Ganja</span><a href="../archive.html">Back issues</a></footer>
+  <footer class="flap"><span>@@FLAP@@</span><a href="../archive.html">Back issues</a></footer>
 </div>
 <div class="modal" id="jobmodal" hidden><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="jm-title">
   <button type="button" class="modal-x" id="jm-close" aria-label="Close">×</button>
   <div class="jm-head"><span id="jm-mug"></span><div><div class="kicker" id="jm-kind">Job Listing</div><h3 id="jm-title"></h3></div></div>
   <div id="jm-body"></div><div id="jm-links" class="jm-links"></div>
   <div class="jm-actions">
-    <button type="button" class="btn go" data-d="approve" id="jm-go">✅ Approve — have <span id="jm-agent">the agent</span> handle it</button>
+    <button type="button" class="btn go" data-d="approve" id="jm-go">✅ Approve</button>
     <button type="button" class="btn" data-d="done" id="jm-self">🛠 I'll do it myself — mark done</button>
     <button type="button" class="btn ghost" data-d="dismiss">Not now</button>
   </div><p class="small" id="jm-msg"></p></div></div>
@@ -505,6 +650,7 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <script>
 (function () {
   var DATE = "@@DATE@@", LIST = @@JOBS@@;
+  var BASE = location.pathname.replace(/\/(editions|issues|guides)\/[^\/]*$/, '/').replace(/[^\/]*$/, '');
   var book = document.getElementById('flipbook'), wrap = document.getElementById('bookwrap');
   var pages = Array.prototype.slice.call(book.querySelectorAll('.pg'));
   var nameEl = document.getElementById('leafname'), dotsEl = document.getElementById('dots');
@@ -548,7 +694,7 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
   // ---- Job Listings, Want Ads and B.I.G's catalog: tap → details → approve / handle / not now ----
   var modal = document.getElementById('jobmodal'), cur = null;
   function paintStatus(st) {
-    Array.prototype.forEach.call(document.querySelectorAll('.job, .cat-item'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('.job, .cat-item, .coupon'), function (b) {
       var kind = b.dataset.kind || 'market', key = (kind === 'job' ? '' : kind + ':') + b.dataset.idx, s = st[key];
       var el = b.querySelector('.job-status') || b.querySelector('.cat-more');
       if (!s || !el) return; b.classList.add('st-' + s.status);
@@ -556,18 +702,30 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
                                                    s.result_status === 'failed' ? '❌ Didn\'t work — ' + (s.result || 'see Discord') :
                                                    s.result_status === 'needs' ? '👉 Needs you — ' + (s.result || 'see Discord') :
                                                    '⏳ Approved — ' + (s.agent || 'Ganja') + ' is on it') :
-                       s.status === 'done' ? '🛠 Done (by you)' : s.status === 'dismissed' ? 'Not now' : el.textContent;
+                       s.status === 'done' ? '🛠 Done (by you)' : s.status === 'clipped' ? '✂ Clipped — saved for later' : s.status === 'dismissed' ? 'Not now' : el.textContent;
     });
   }
-  function load() { fetch('/api/jobs?date=' + DATE, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(paintStatus).catch(function () {}); }
+  var PLANS = {};
+  function paintPlans() {
+    Array.prototype.forEach.call(document.querySelectorAll('.cat-item'), function (b) {
+      var j = (LIST.market || [])[+b.dataset.idx] || {}, p = PLANS[j.item_no], el = b.querySelector('.cat-more');
+      if (!p || !el) return;
+      el.textContent = p.status === 'ready' ? '📋 Full plan ready ›' : p.status === 'writing' ? '✍️ B.I.G is writing the plan…' : el.textContent;
+    });
+  }
+  function load() {
+    fetch(BASE + 'api/jobs?date=' + DATE, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(paintStatus).catch(function () {});
+    if (LIST.market && LIST.market.length) fetch(BASE + 'api/plans', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (p) { PLANS = p || {}; paintPlans(); }).catch(function () {});
+  }
   function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
   function row(label, val) { return val ? '<div class="tag-row"><span>' + esc(label) + '</span><b>' + esc(val) + '</b></div>' : ''; }
   document.addEventListener('click', function (ev) {
-    var b = ev.target.closest && ev.target.closest('.job, .cat-item'); if (!b) return;
+    var b = ev.target.closest && ev.target.closest('.job, .cat-item, .coupon'); if (!b) return;
     ev.stopPropagation();
     var kind = b.dataset.kind || 'market', j = (LIST[kind] || [])[+b.dataset.idx] || {};
     cur = { kind: kind, idx: +b.dataset.idx };
-    document.getElementById('jm-kind').textContent = kind === 'job' ? 'Job Listing' : kind === 'want' ? 'Want Ad' : 'B.I.G\'s Catalog · Item No. ' + (j.item_no || '');
+    document.getElementById('jm-kind').textContent = kind === 'job' ? 'Job Listing' : kind === 'want' ? 'Want Ad' : kind === 'coupon' ? 'The Couponer · ' + (j.category || 'coupon') : 'B.I.G\'s Catalog · Item No. ' + (j.item_no || '');
     document.getElementById('jm-title').textContent = j.title || '';
     var body = '';
     if (kind === 'market') {
@@ -575,6 +733,11 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
              (j.how ? '<p><b>How it pays:</b> ' + esc(j.how) + '</p>' : '') +
              '<div class="tag-card">' + row('Potential income / week', j.income_week) + row('Time to keep it going', j.tend) +
              row('Up-front cost', j.upfront) + row('Weekly cost', j.weekly_cost) + row('Risk of loss', j.risk) + '</div>';
+    } else if (kind === 'coupon') {
+      body = '<div class="burst big coupon-price"><span>' + esc(j.price || 'FREE') + '</span></div><p>' + esc(j.what) + '</p>' +
+             (j.why ? '<p><b>Why it fits your setup:</b> ' + esc(j.why) + '</p>' : '') +
+             '<div class="tag-card">' + row('Works with', j.fits) + row('Deal', j.deal) + row('Good through', j.expires) +
+             row('Time to try it', j.time) + row('Difficulty', j.difficulty) + '</div>';
     } else {
       body = '<p>' + esc(j.details || j.text) + '</p>' + (j.ask ? '<p class="ask">➜ ' + esc(j.ask) + '</p>' : '');
     }
@@ -582,19 +745,41 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     var links = (j.links || []).slice(); if (j.url) links.unshift({ label: 'Open', url: j.url });
     document.getElementById('jm-links').innerHTML = links.filter(function (l) { return /^https?:\/\//.test(l.url || ''); })
       .map(function (l) { return '<a class="btn link" target="_blank" rel="noopener" href="' + esc(l.url) + '">🔗 ' + esc(l.label || l.url) + '</a>'; }).join('');
-    document.getElementById('jm-agent').textContent = kind === 'market' ? 'B.I.G' : (j.agent || 'the agent');
-    document.getElementById('jm-go').firstChild.textContent = kind === 'market' ? '✅ Interested — have ' : kind === 'want' ? '✅ Yes — have ' : '✅ Approve — have ';
-    document.getElementById('jm-self').style.display = kind === 'market' ? 'none' : '';
+    var go = document.getElementById('jm-go'), self = document.getElementById('jm-self');
+    go.dataset.d = 'approve'; self.dataset.d = 'done'; self.style.display = '';
+    if (kind === 'market') {
+      var p = PLANS[j.item_no] || {};
+      go.dataset.d = p.status === 'ready' ? 'read' : 'plan'; go.dataset.url = p.url || '';
+      go.innerHTML = p.status === 'ready' ? '📖 Read B.I.G\'s full start-to-finish plan' : p.status === 'writing' ? '✍️ B.I.G is writing the plan — check back soon'
+                   : '📋 Have B.I.G write the full plan: every step, site, account &amp; legal need';
+      self.style.display = 'none';
+    } else if (kind === 'coupon') {
+      go.innerHTML = '🛠 Have the Garden set it up'; self.innerHTML = '✂ Clip it — save for later'; self.dataset.d = 'clip';
+    } else {
+      go.innerHTML = (kind === 'want' ? '✅ Yes — have ' : '✅ Approve — have ') + esc(j.agent || 'the agent') + ' handle it';
+      self.innerHTML = '🛠 I\'ll do it myself — mark done';
+    }
     var m = b.querySelector('.mug'); document.getElementById('jm-mug').innerHTML = m ? m.outerHTML : '';
     document.getElementById('jm-msg').textContent = ''; modal.hidden = false;
   }, true);
   function close() { modal.hidden = true; }
   document.getElementById('jm-close').onclick = close;
   modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  ['touchstart', 'touchmove', 'wheel', 'mousedown', 'mousemove'].forEach(function (t) { modal.addEventListener(t, function (e) { e.stopPropagation(); }, { passive: true }); });
   Array.prototype.forEach.call(modal.querySelectorAll('.btn[data-d]'), function (btn) {
     btn.onclick = function () {
-      var msg = document.getElementById('jm-msg'); msg.textContent = 'Sending…';
-      fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Double-Wide': '1' },
+      var msg = document.getElementById('jm-msg');
+      if (btn.dataset.d === 'read') { location.href = BASE + btn.dataset.url; return; }
+      msg.textContent = 'Sending…';
+      if (btn.dataset.d === 'plan') {
+        fetch(BASE + 'api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Double-Wide': '1' },
+          body: JSON.stringify({ date: DATE, idx: cur.idx }) })
+          .then(function (r) { return r.json(); })
+          .then(function (res) { msg.textContent = res.message || 'Sent.'; if (res.status === 'ready' && res.url) location.href = BASE + res.url; load(); })
+          .catch(function () { msg.textContent = 'Could not reach the Garden — try again in a minute.'; });
+        return;
+      }
+      fetch(BASE + 'api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Double-Wide': '1' },
         body: JSON.stringify({ date: DATE, kind: cur.kind, idx: cur.idx, decision: btn.dataset.d }) })
         .then(function (r) { return r.json(); })
         .then(function (res) { msg.textContent = res.message || 'Saved.'; load(); if (res.ok) setTimeout(close, 1600); })
@@ -615,16 +800,10 @@ def main():
     os.makedirs(os.path.join(SITE, "editions"), exist_ok=True)
     pg = render(ed)
     open(os.path.join(SITE, "editions", date + ".html"), "w").write(pg)
-    open(os.path.join(SITE, "index.html"), "w").write(pg.replace('href="../', 'href="').replace('src="../', 'src="'))
-    eds = sorted((f[:-5] for f in os.listdir(os.path.join(SITE, "editions")) if f.endswith(".html")), reverse=True)
-    items = "".join('<li><a href="editions/%s.html">%s</a></li>' % (x, dt.date.fromisoformat(x).strftime("%A, %B %-d, %Y")) for x in eds)
-    open(os.path.join(SITE, "archive.html"), "w").write(
-        '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<title>The Double Wide — Back Issues</title><link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Oswald:wght@600&family=Old+Standard+TT&display=swap" rel="stylesheet">'
-        '<style>' + open(os.path.join(ROOT, "double-wide.css")).read() + '</style></head><body><div class="pack">'
-        '<header class="cover"><div class="flag"><h1>Back Issues</h1><div class="motto">The Double Wide archive</div></div></header>'
-        '<main class="paper"><ul class="archive">' + items + '</ul><p><a href="index.html">Today\'s paper</a></p></main></div></body></html>')
     print("rendered %s: editions/%s.html" % (date, date))
+    if "--no-build" not in sys.argv:   # home page (latest issue), back issues, B.I.G's catalog + plans
+        import subprocess
+        subprocess.run([sys.executable, os.path.join(ROOT, "build_extras.py")], check=False)
 
 
 if __name__ == "__main__":
