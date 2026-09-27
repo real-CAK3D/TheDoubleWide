@@ -7,19 +7,20 @@ The Double Wide is the daily paper for a garden of [Hermes](https://github.com/N
 It's one of the Garden's papers, all read through **[The Newsstand](https://github.com/real-CAK3D/NewsStand)**, a single home-screen app that mounts every paper under one private (Tailscale-only) HTTPS address. The sister papers are:
 
 - [The Re-Up](https://github.com/real-CAK3D/TheRe-Up): want ads.
-- [The Sunday Smoke](https://github.com/real-CAK3D/TheSundaySmoke): the week in review, plus the funnies.
-- [Roach Clips](https://github.com/real-CAK3D/RoachClips): coupons for new things to try.
+- [The Sunday Smoke](https://github.com/real-CAK3D/TheSundaySmoke): the week in review, plus the funnies. Ganja writes 1-2 strips a day with this paper, and they're drawn and saved up for Sunday.
+- [Roach Clips](https://github.com/real-CAK3D/RoachClips): coupons for new things to try, plus B.I.G's Wish-Book of side gigs.
 - [The Green Thumb](https://github.com/real-CAK3D/TheGreenThumb): the directory.
+
+Section banners run across the top of each page (News, Business, Sports, Classifieds, Almanac), and the house seal on every cover leads back to the Newsstand.
 
 ## Sections
 
 - **A · News:** the front page (top story, 3-day weather, logins and keys), one page per desk, and Letters to the Editor.
 - **B · Business:**
-  - **The Garden Token Average**, a DOW for tokens. It has a ticker tape, an intraday chart, the most active agents by ticker symbol, and model and provider "sectors", each with its change from yesterday.
+  - **The Garden Token Average**, a DOW for tokens. It has a ticker tape, an intraday chart stacked by agent with yesterday's session and hourly volume, the most active agents by ticker symbol, and model and provider "sectors", each with its change from yesterday.
   - Payroll: pretend pay graded on speed, token efficiency and no lost context.
-  - Money & Market: B.I.G's catalog of side-gig ideas, each with a starburst price tag. Tap one and B.I.G writes a full start-to-finish plan: every step, site, account, cost and Maine legal or tax note.
-- **C · Sports:** the Garden League standings (uptime streaks, jobs, grades), last night's box score, Player of the Game, Streak Watch and a facilities report.
-- **D · Classifieds:** the police blotter and tappable job listings. Approving a job hands it to an agent, and a follow-up reports whether it worked.
+- **C · Sports:** a game story, post-game quote, power rankings, around the league and the injury report, then the standings (uptime streaks, jobs, grades), last night's box score and a facilities report.
+- **D · Classifieds:** the police blotter, compact tappable job listings and follow-ups. Approving a job hands it to an agent, and a follow-up reports whether it worked.
 - **E · Almanac:** the calendar, sun and moon, the season, records, predictions and on-this-day items.
 - **Back of the pack:** a scannable barcode and a QR code that both lead to this repo.
 
