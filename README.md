@@ -37,7 +37,7 @@ It runs in the order most newspapers do:
 | `collect_inputs.py` | Gathers the facts Ganja writes from: weather, uptime, token usage, payroll, the almanac and B.I.G's market. |
 | `serve.py` / `gardenweb.py` | A small web server, plus the job-listing and B.I.G-plan endpoints. |
 | `ganja_editor_prompt.txt`, `prompts/big_plan_prompt.txt` | The agents' instructions. |
-| `deliver.sh` | Rebuilds the pages after Ganja files the paper and rings the Newsstand's bell. |
+| `deliver.sh` | Rebuilds the pages after Ganja files the paper and rings The Corner Chronicle's bell. |
 | `site/js/turn-edge.js` | [turn.js](http://www.turnjs.com) 3, patched so pages can be grabbed anywhere along the side edge. Its license header is kept. |
 | `examples/sample-edition.json` | A small edition you can render to try it out. |
 
