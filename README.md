@@ -15,13 +15,13 @@ Section banners run across the top of each page (News, Business, Sports, Classif
 
 ## Sections
 
-- **A · News:** the front page (top story, 3-day weather, logins and keys), one page per desk, and Letters to the Editor.
-- **B · Business:**
+- **News:** the front page (top story, 3-day weather, logins and keys), one page per desk, and Letters to the Editor.
+- **Business:**
   - **The Garden Token Average**, a DOW for tokens. It has a ticker tape, an intraday chart stacked by agent with yesterday's session and hourly volume, the most active agents by ticker symbol, and model and provider "sectors", each with its change from yesterday.
   - Payroll: pretend pay graded on speed, token efficiency and no lost context.
-- **C · Sports:** a game story, post-game quote, power rankings, around the league and the injury report, then the standings (uptime streaks, jobs, grades), last night's box score and a facilities report.
-- **D · Classifieds:** the police blotter, compact tappable job listings and follow-ups. Approving a job hands it to an agent, and a follow-up reports whether it worked.
-- **E · Almanac:** the calendar, sun and moon, the season, records, predictions and on-this-day items.
+- **Sports:** a game story, post-game quote, power rankings, around the league and the injury report, then the standings (uptime streaks, jobs, grades), last night's box score and a facilities report.
+- **Classifieds:** the police blotter, compact tappable job listings and follow-ups. Approving a job hands it to an agent, and a follow-up reports whether it worked.
+- **Almanac:** the calendar, sun and moon, the season, records, predictions and on-this-day items.
 - **Back of the pack:** a scannable barcode and a QR code that both lead to this repo.
 
 ## Files
