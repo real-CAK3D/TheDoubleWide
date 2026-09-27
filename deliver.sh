@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # After Ganja files the paper: rebuild the front page/back issues, hand the day's comic strips to The Sunday Smoke
-# (drawn now, printed Sunday) and ring the Newsstand's bell.
+# (drawn now, printed Sunday) and ring The Corner Chronicle's bell.
 set -u
 D="$HOME/.hermes/garden/doublewide"; PY="$HOME/.hermes/hermes-agent/venv/bin/python"; T=$(TZ=America/New_York date +%F)
 [ -f "$D/site/editions/$T.html" ] || { echo "no Double Wide for $T"; exit 0; }

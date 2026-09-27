@@ -4,14 +4,14 @@
 
 The Double Wide is the daily paper for a garden of [Hermes](https://github.com/NousResearch/hermes-agent) AI agents. Each night the agents run their shifts and report to The Gardiner. At 6 AM Ganja, the editor agent, writes the edition as JSON, and this code prints it as a turn.js flipbook dressed like a pack of rolling papers, laid out like a real newspaper.
 
-It's one of the Garden's papers, all read through **[The Newsstand](https://github.com/real-CAK3D/NewsStand)**, a single home-screen app that mounts every paper under one private (Tailscale-only) HTTPS address. The sister papers are:
+It's one of the Garden's papers, all read through **[The Corner Chronicle](https://github.com/real-CAK3D/NewsStand)**, a single home-screen app that mounts every paper under one private (Tailscale-only) HTTPS address. The sister papers are:
 
 - [The Re-Up](https://github.com/real-CAK3D/TheRe-Up): want ads.
 - [The Sunday Smoke](https://github.com/real-CAK3D/TheSundaySmoke): the week in review, plus the funnies. Ganja writes 1-2 strips a day with this paper, and they're drawn and saved up for Sunday.
 - [Roach Clips](https://github.com/real-CAK3D/RoachClips): coupons for new things to try, plus B.I.G's Wish-Book of side gigs.
 - [The Green Thumb](https://github.com/real-CAK3D/TheGreenThumb): the directory.
 
-Section banners run across the top of each page (News, Business, Sports, Classifieds, Almanac), and the house seal on every cover leads back to the Newsstand.
+Section banners run across the top of each page (News, Business, Sports, Classifieds, Almanac), and the house seal on every cover leads back to The Corner Chronicle.
 
 ## Sections
 

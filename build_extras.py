@@ -52,7 +52,7 @@ def shell(title, body, cls="stand", extra_head="", scripts=""):
 
 
 def topbar(title, sub="", up=""):
-    return ('<header class="stand-top"><a class="stand-home ns-home" href="/" aria-label="The Newsstand" title="The Newsstand">🏠</a><a class="stand-home" href="%s" aria-label="Today&#39;s paper">🗞</a>'
+    return ('<header class="stand-top"><a class="stand-home ns-home" href="/" aria-label="The Corner Chronicle" title="The Corner Chronicle">🏠</a><a class="stand-home" href="%s" aria-label="Today&#39;s paper">🗞</a>'
             '<div><h1>%s</h1>%s</div><a class="stand-home" href="%sarchive.html" aria-label="Back issues">🗂</a></header>'
             % (up or "./", e(title), ('<div class="stand-sub">%s</div>' % e(sub)) if sub else "", up))
 
@@ -63,7 +63,7 @@ def listing(folder):
 
 
 # ------------------------------------------------------------------ back issues + home
-SISTERS = [("🗞 The Newsstand", "/", "every paper in one place"),
+SISTERS = [("🗞 The Corner Chronicle", "/", "every paper in one place"),
            ("💨 The Sunday Smoke", "/sunday-smoke/", "Sundays · the week rolled up + the funnies"),
            ("📌 The Re-Up", "/re-up/", "want ads · what the agents need"),
            ("✂ Roach Clips", "/roach-clips/", "Tuesdays · new things to try, found by B.I.G"),
@@ -76,7 +76,7 @@ def build_archive():
     sis = "".join('<li><a href="%s">%s</a> <span class="small">%s</span></li>' % (u, e(n), d) for n, u, d in SISTERS)
     body = ('%s<main class="paper"><div class="box arch"><h2>The Double Wide</h2><ul class="archive">%s</ul></div>'
             '<div class="box arch"><h2>More from the Garden</h2><ul class="archive"><li><a href="/roach-clips/catalog.html">💰 B.I.G&#39;s Wish-Book &amp; plans</a> <span class="small">(in Roach Clips)</span></li>%s</ul>'
-            '<p class="small">Every paper is on the Newsstand — the one app on your home screen.</p></div></main>'
+            '<p class="small">Every paper is on The Corner Chronicle — the one app on your home screen.</p></div></main>'
             % (topbar("Back Issues", "every Double Wide ever rolled"), items or "<li>None yet.</li>", sis))
     open(os.path.join(SITE, "archive.html"), "w").write(shell("The Double Wide — Back Issues", body, "stand"))
 

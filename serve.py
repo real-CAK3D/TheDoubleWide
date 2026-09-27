@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Double Wide web server (Tailscale-only; mounted at /double-wide/ under the Newsstand's HTTPS address).
+"""The Double Wide web server (Tailscale-only; mounted at /double-wide/ under The Corner Chronicle's HTTPS address).
 
   GET  /api/jobs?date=YYYY-MM-DD       -> {"<key>": {"status": ..., "result": ...}}
   POST /api/jobs {date, kind, idx, decision}   kind: job | want | market;  decision: approve | done | dismiss
@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(ROOT, "site")
 HERMES = os.path.expanduser("~/.hermes")
 PY = os.path.join(HERMES, "hermes-agent/venv/bin/python")
-NEWSSTAND = os.path.join(HERMES, "garden", "newsstand")   # notices go out through the Newsstand app
+NEWSSTAND = os.path.join(HERMES, "garden", "newsstand")   # notices go out through The Corner Chronicle app
 RESULT_RULE = ("START your final reply with exactly one line: 'RESULT: OK — <what worked>', 'RESULT: FAILED — <what went wrong>' or "
                "'RESULT: NEEDS CAK3D — <the step he must do>'. The paper shows that line as the follow-up, so keep it under 120 characters.")
 
