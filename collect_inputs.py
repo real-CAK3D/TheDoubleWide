@@ -239,6 +239,20 @@ def usage(day, today):
             for k, v in (pc.get(src) or {}).items():
                 dst[k] += v
         cache += pc.get("cache_read", 0)
+    try:  # Ollama on NukeBox (qwen3, gemma …): read from its server log, since Hermes doesn't count the side calls it sends there
+        import ollama_usage
+        ol = ollama_usage.usage(day)
+    except Exception:
+        ol = None
+    if ol and ol.get("total"):
+        for i, v in enumerate(ol["hours"]):
+            hours[i] += v
+            agent_hours["NukeBox (Ollama)"][i] += v
+        agent["NukeBox (Ollama)"] += ol["total"]
+        prov["Ollama (NukeBox)"] += ol["total"]
+        for k, v in ol["by_model"].items():
+            model[k] += v
+        calls += ol.get("requests", 0)
     data = {"day": day, "total": round(sum(agent.values())), "cache_read": round(cache), "calls": calls,
             "hours": [round(h) for h in hours], "by_agent": dict(agent.most_common()), "by_model": dict(model.most_common()),
             "by_provider": dict(prov.most_common()), "pc_included": bool(pc),
