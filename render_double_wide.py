@@ -591,18 +591,28 @@ def wordsearch(words, seed, size=12):
     return grid, placed
 
 
+GAMES = [("sudoku", "Sudoku"), ("wordsearch", "Word Search"), ("cryptogram", "Cryptogram"), ("jumble", "Jumble"),
+         ("mines", "Minesweeper"), ("nonogram", "Nonogram"), ("fiveleaf", "Five Leaf")]   # Monday … Sunday
+
+
 def puzzles_block(ed, date):
-    words = ["GANJA", "CHRONIC", "MAPLE", "HERBIE", "HOMIE", "IBBY", "BAKER", "CYPHER", "CLYDIUS", "GARDEN", "RELAY", "VAULT", "TOKENS"]
+    """The Daily Puzzle: a new game every day (played full-screen by js/games.js, so page turns can't steal taps), plus the Garden-scopes."""
     text = " ".join([str((ed.get("headline") or {}).get("title") or "")] + [str(st.get("title")) for s_ in ed.get("sections") or [] for st in s_.get("stories") or []])
-    news = [w for w in re.findall(r"(?<![A-Za-z0-9])[A-Za-z]{5,9}(?![A-Za-z0-9])", text) if w.lower() not in ("their", "there", "after", "about", "which", "garden", "still", "going")]
-    grid, placed = wordsearch(news[:6] + words, date)
-    table = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % c for c in row) for row in grid)
+    news = [w for w in re.findall(r"(?<![A-Za-z0-9])[A-Za-z]{4,10}(?![A-Za-z0-9])", text)
+            if w.lower() not in ("their", "there", "after", "about", "which", "still", "going", "this", "that", "with", "from", "into", "what", "when", "they", "were", "have")]
+    quotes = [str(x.get("text") or "") for x in ed.get("horoscopes") or [] if isinstance(x, dict)]
+    quotes += [str(st.get("title") or "") for s_ in ed.get("sections") or [] for st in s_.get("stories") or []]
+    wd = dt.date.fromisoformat(date).weekday()
+    game, name = GAMES[wd]
+    week = "".join('<span class="%s">%s · %s</span>' % ("on" if i == wd else "", d, n) for i, (d, (_, n)) in enumerate(zip(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), GAMES)))
     scopes = "".join('<div class="scope">%s<div><b>%s</b><p>%s</p></div></div>' % (mug(x.get("agent"), "mug sm"), e(x.get("agent")), e(x.get("text")))
                      for x in ed.get("horoscopes") or [] if isinstance(x, dict))
-    return ('<div class="pz"><div class="pz-ws"><h2>Word Search</h2><p class="small">Every word is from today\'s paper. Tap letters to circle them.</p>'
-            '<table class="ws">%s</table><ul class="ws-words">%s</ul></div>'
+    return ('<div class="pz"><div class="pz-ws"><div class="pz-today"><div class="kicker">The Daily Puzzle</div><h2>Today: %s</h2>'
+            '<p class="small">A new game every day, built from today&#39;s paper. It opens full-screen, so play as long as you like.</p>'
+            '<div class="pz-week">%s</div><button type="button" class="pz-play" data-game="%s" data-date="%s" data-words="%s" data-quotes="%s">▶ Play %s</button></div></div>'
             '<div class="pz-scopes"><h2>Garden-scopes</h2><p class="small">What the stars (and the cron jobs) hold today</p>%s</div></div>'
-            % (table, "".join("<li>%s</li>" % w for w in sorted(placed)), scopes or '<p class="small">The stars were quiet today.</p>'))
+            % (e(name), week, game, e(date), e(json.dumps(news[:24])), e(json.dumps([q for q in quotes if q][:12])), e(name),
+               scopes or '<p class="small">The stars were quiet today.</p>'))
 
 
 # ---------------------------------------------------------------- obituaries & announcements
@@ -843,8 +853,8 @@ def render(ed):
         body.append(("Obituaries & Announcements", sec("Obituaries", "Passings · Arrivals") + ob, " obits-page", "Obituaries"))
     body.append(("Weather & Almanac", sec("Weather", "Forecast · Sky · Season") + '<div class="wx-page">%s%s</div>' % (weather_block(date), coming_block(ed.get("coming_up")))
                  + almanac_block(date, ed.get("almanac_notes"), ed.get("almanac")), " weather-page", "Weather"))
-    body.append(("Puzzles & Garden-scopes", sec("Puzzles", "Word search · Garden-scopes") + puzzles_block(ed, date)
-                 + '<p class="small center">That\'s the whole pack. <a href="../archive.html">Back issues →</a> · <a href="/">🏠 The Corner Chronicle →</a></p>', " puzzles", "Puzzles"))
+    body.append(("Puzzles & Garden-scopes", sec("Puzzles", "The Daily Puzzle · Garden-scopes") + puzzles_block(ed, date)
+                 + '<p class="small center">That\'s the whole pack. <a href="../archive.html">Back issues →</a></p>', " puzzles", "Puzzles"))
     goto, index = {}, []
     for i, (t, _, _, label) in enumerate(body):   # page 1 = the pack, 2 = the front page, then the body
         goto.setdefault(t, i + 3)
@@ -875,7 +885,7 @@ def render(ed):
     pick = lambda xs, keys: [{k: x.get(k) for k in keys} for x in (xs or []) if isinstance(x, dict)]
     lists = {"job": pick(ed.get("job_listings"), ("title", "agent", "details", "text", "ask", "url")),
              "market": pick(market, MARKET_KEYS)}
-    return book(pages, date=date, no=no, lists=lists)
+    return book(pages, date=date, no=no, lists=lists, scripts='<script src="../js/games.js" defer></script>')
 
 
 MARKET_KEYS = ("title", "tag", "price", "desc", "text", "how", "income_week", "tend", "upfront", "weekly_cost", "risk", "links", "item_no")
@@ -910,7 +920,7 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>@@PAPER@@ — @@DATE_LONG@@</title>
 <link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#2a1a10">
-<link rel="icon" href="/icons/icon-192.png"><link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" href="/icons/icon-192.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><script src="/app.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Rye&family=Luckiest+Guy&family=UnifrakturMaguntia&family=Bangers&family=Patrick+Hand+SC&family=Oswald:wght@400;600;700&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
