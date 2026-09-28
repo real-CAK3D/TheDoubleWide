@@ -526,9 +526,18 @@ def front_page(ed, date, goto):
 def opinion_block(ed):
     ed_ = ed.get("editorial") or {}
     sug = [x for x in (ed.get("suggestions") or []) if isinstance(x, dict)]
-    if not (ed_.get("body") or sug):
+    mail = [x for x in (ed.get("reader_letters") or []) if isinstance(x, dict) and x.get("text")]
+    tips = [x for x in (ed.get("tip_line") or []) if isinstance(x, dict) and x.get("tip")]
+    if not (ed_.get("body") or sug or mail or tips):
         return ""
-    letters = "".join('<div class="letter"><p>%s</p><span>— %s</span><b>%s</b></div>' % (e(x.get("text")), e(x.get("agent")), e(x.get("title"))) for x in sug)
+    letters = "".join('<div class="letter reader"><p>%s</p><span>— CAK3D, via the mail slot%s</span>%s</div>'
+                      % (e(x.get("text")), (" · to " + e(x["to"])) if x.get("to") else "",
+                         ('<div class="reply">%s<p><b>%s replies:</b> %s</p></div>' % (mug((x.get("reply") or {}).get("agent") or "Ganja", "mug xs"),
+                          e((x.get("reply") or {}).get("agent") or "Ganja"), e((x.get("reply") or {}).get("text")))) if (x.get("reply") or {}).get("text") else "") for x in mail)
+    letters += "".join('<div class="letter"><p>%s</p><span>— %s</span><b>%s</b></div>' % (e(x.get("text")), e(x.get("agent")), e(x.get("title"))) for x in sug)
+    if tips:
+        letters += ('<div class="tipline"><h3>☎ The Tip Line</h3><ul>%s</ul></div>'
+                    % "".join('<li>%s<span><b>%s</b> is on it: %s <i>(tip: %s)</i></span></li>' % (mug(x.get("agent"), "mug xs"), e(x.get("agent")), e(x.get("plan")), e(x.get("tip"))) for x in tips))
     return ('<div class="op"><div class="op-ed">%s</div><div class="op-letters"><h2>Letters to the Editor</h2><p class="small">Ideas for the paper — tell Ganja which ones to keep</p>%s</div></div>'
             % (('<h2 class="op-title">%s</h2><div class="byline">%s<span>The Editorial Board · Ganja, editor</span></div>%s'
                 % (e(ed_.get("title") or "From the Editor"), mug("Ganja"), para(ed_.get("body")))) if ed_.get("body") else

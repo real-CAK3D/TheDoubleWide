@@ -19,6 +19,9 @@ PROFILES = {"main": "ganja", "chronic": "chronic", "maple": "maple", "herbie": "
             "ibby": "ibby", "discostu": "discostu", "bak3r": "bak3r", "cyph3r": "cyph3r", "clydius": "clydius", "tinyz": "tinyz"}
 
 
+GARDEN_NS = os.path.expanduser('~/.hermes/garden/newsstand')
+
+
 def get_json(url, headers=None, timeout=30):
     with urllib.request.urlopen(urllib.request.Request(url, headers={**UA, **(headers or {})}), timeout=timeout) as r:
         return json.load(r)
@@ -535,6 +538,44 @@ def main():
                  ", ".join("%s (%s)" % (x["name"], x.get("device")) for x in ob["passed"]) or "none"))
     except Exception as ex:
         print("DIRECTORY CHANGES: unavailable (%s)" % type(ex).__name__)
+    try:   # the kiosk's mail slot, tip line and 👍/👎 buttons (The Corner Chronicle's server keeps them)
+        priv = os.path.join(GARDEN_NS, "private")
+        def jl(n, d):
+            try:
+                return json.load(open(os.path.join(priv, n + ".json")))
+            except Exception:
+                return d
+        letters, tips, ratings = jl("letters", []), jl("tips", []), jl("ratings", [])
+        new_l = [x for x in letters if x.get("status") == "new"]
+        new_t = [x for x in tips if x.get("status") == "new"]
+        print("\nREADER MAIL & TIPS (print every one — see READERS in your instructions):")
+        for x in new_l:
+            print("  LETTER to %s (%s): %s" % (x.get("to"), x.get("at", "")[:16], x.get("text")))
+        for x in new_t:
+            print("  TIP for %s (%s): %s" % (x.get("agent"), x.get("at", "")[:16], x.get("text")))
+        if not (new_l or new_t):
+            print("  none today — leave reader_letters and tip_line empty")
+        week = (dt.datetime.now(TZ) - dt.timedelta(days=7)).isoformat()[:10]
+        score = {}
+        for r in ratings:
+            if r.get("at", "")[:10] >= week:
+                k = "%s / %s" % (r.get("paper"), r.get("section"))
+                score[k] = score.get(k, 0) + int(r.get("vote") or 0)
+        if score:
+            print("READER RATINGS (last 7 days, 👍 minus 👎): " + "; ".join("%s %+d" % kv for kv in sorted(score.items(), key=lambda kv: -abs(kv[1]))[:14]))
+        for rows, name in ((letters, "letters"), (tips, "tips")):
+            changed = False
+            for x in rows:
+                if x.get("status") == "new":
+                    x["status"], x["to_paper"] = "with the editor", today
+                    changed = True
+            if changed:
+                tmp = os.path.join(priv, name + ".json.tmp")
+                json.dump(rows, open(tmp, "w"), indent=1, ensure_ascii=False)
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, os.path.join(priv, name + ".json"))
+    except Exception as ex:
+        print("READER MAIL: unavailable (%s)" % type(ex).__name__)
     facts = coming_up_facts()
     print("\nCOMING UP FACTS (use these + the recap for the 'coming_up' calendar):\n" + ("\n".join("- " + f for f in facts) or "- none found"))
 
