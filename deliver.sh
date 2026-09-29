@@ -8,3 +8,5 @@ D="$HOME/.hermes/garden/doublewide"; PY="$HOME/.hermes/hermes-agent/venv/bin/pyt
 HEAD=$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["headline"]["title"])' "$D/drafts/$T.json" 2>/dev/null)
 "$PY" "$HOME/.hermes/garden/newsstand/notify.py" "🗞️ The Double Wide is here" "${HEAD:-Today's paper is rolled.}" "/double-wide/"
 "$PY" "$HOME/.hermes/garden/sunday-smoke/take_strips.py" "$D/drafts/$T.json" || true
+# and put the day on the air: the kiosk radio's shows, every agent in their own voice
+"$PY" "$HOME/.hermes/garden/newsstand/build_radio.py" || true
