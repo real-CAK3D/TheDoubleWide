@@ -767,3 +767,13 @@ html.gm-open, html.gm-open body { overflow: hidden; }
 .tipline { margin-top: 12px; border: 2px solid var(--ink); padding: 8px 10px; background: #fffaf0; } .tipline h3 { margin: 0 0 4px; font: 700 14px/1 Oswald, sans-serif; letter-spacing: .14em; text-transform: uppercase; }
 .tipline ul { list-style: none; margin: 0; padding: 0; } .tipline li { display: flex; gap: 8px; padding: 5px 0; border-top: 1px dotted #b9a37a; font-size: 14px; }
 .tipline i { color: var(--muted, #6b5a44); }
+
+/* ✂ Clip and 👍/👎: a slim column at the right edge, halfway up — clear of the next-page button */
+.paper-tools { top: 42%; bottom: auto !important; right: 4px !important; transform: translateY(-50%); gap: 5px; }
+.paper-tools button { min-width: 38px; height: 34px; padding: 0 6px; font-size: 13px; opacity: .8; }
+.paper-tools .pt-clip { writing-mode: vertical-rl; height: auto; padding: 8px 4px; min-width: 32px; }
+.pt-note { position: absolute; right: 44px; top: 0; white-space: nowrap; }
+
+.stand-home.ns-home svg, .xx-seal svg { width: 100%; height: 100%; display: block; }
+.stand-home.ns-home { padding: 6px; box-sizing: border-box; }
+.xx-seal { display: inline-block; width: 40px; height: 40px; color: #1b1510; }

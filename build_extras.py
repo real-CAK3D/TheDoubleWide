@@ -52,7 +52,7 @@ def shell(title, body, cls="stand", extra_head="", scripts=""):
 
 
 def topbar(title, sub="", up=""):
-    return ('<header class="stand-top"><a class="stand-home ns-home" href="/" aria-label="The Corner Chronicle" title="The Corner Chronicle">🏠</a><a class="stand-home" href="%s" aria-label="Today&#39;s paper">🗞</a>'
+    return ('<header class="stand-top"><a class="stand-home ns-home" href="/" aria-label="The Corner Chronicle" title="The Corner Chronicle"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="56" fill="none" stroke="currentColor" stroke-width="5"/><path d="M24 78h72v-22l-36-18-36 18z" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/><rect x="36" y="60" width="14" height="18" fill="currentColor"/><rect x="62" y="60" width="20" height="10" fill="currentColor"/><path d="M74 38c4-8 12-8 10-16M82 36c6-6 12-4 12-12" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg></a><a class="stand-home" href="%s" aria-label="Today&#39;s paper">🗞</a>'
             '<div><h1>%s</h1>%s</div><a class="stand-home" href="%sarchive.html" aria-label="Back issues">🗂</a></header>'
             % (up or "./", e(title), ('<div class="stand-sub">%s</div>' % e(sub)) if sub else "", up))
 
